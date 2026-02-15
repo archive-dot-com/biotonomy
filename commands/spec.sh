@@ -24,16 +24,18 @@ bt__json_fields_sep() {
   # Reads JSON on stdin and prints: title<US>url<US>body (US = 0x1f).
   # Avoid NUL: bash variables can't reliably hold it.
   bt__require_cmd node
-  node -e '
-    const fs = require("fs");
-    const j = JSON.parse(fs.readFileSync(0, "utf8") || "{}");
-    const title = (j.title ?? "").toString();
-    const url = (j.url ?? "").toString();
-    // Make body newline-free so bash `read` (used by the caller) does not truncate it.
-    const body = (j.body ?? "").toString().replace(/[\r\n]+/g, " ");
-    // Ensure a terminating newline so bash `read` does not exit non-zero at EOF.
-    process.stdout.write(title + "\x1f" + url + "\x1f" + body + "\n");
-  '
+  node -e "$(
+    cat <<'NODE'
+const fs = require("fs");
+const j = JSON.parse(fs.readFileSync(0, "utf8") || "{}");
+const title = (j.title ?? "").toString();
+const url = (j.url ?? "").toString();
+// Make body newline-free so bash `read` (used by the caller) does not truncate it.
+const body = (j.body ?? "").toString().replace(/[\r\n]+/g, " ");
+// Ensure a terminating newline so bash `read` does not exit non-zero at EOF.
+process.stdout.write(title + "\x1f" + url + "\x1f" + body + "\n");
+NODE
+  )"
 }
 
 bt_cmd_spec() {
@@ -81,7 +83,7 @@ EOF
     repo="$(bt_repo_resolve "$BT_PROJECT_ROOT")"
 
     local -a gh_cmd
-    gh_cmd=(gh issue view "$issue" -R "$repo" --json title,body,url)
+    gh_cmd=(gh issue view "$issue" -R "$repo" --json "title,body,url")
 
     local json
     local errf

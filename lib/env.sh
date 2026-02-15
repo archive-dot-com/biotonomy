@@ -6,8 +6,8 @@ bt__export_kv() {
   local val="$2"
 
   [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 0
-  printf -v "$key" '%s' "$val"
-  export "$key"
+  # Export without eval; keep value literal even if it contains spaces/symbols.
+  export "$key=$val"
 }
 
 bt_env_load_file() {
@@ -49,8 +49,7 @@ bt_env_load_file() {
     bt__export_kv "$key" "$val"
   done <"$f"
 
-  export BT_ENV_FILE
-  BT_ENV_FILE="$f"
+  export BT_ENV_FILE="$f"
 }
 
 bt_env_load() {
