@@ -33,8 +33,8 @@ bt__gate_cmd() {
   esac
 }
 
-bt_run_gates() {
-  # Runs lint/typecheck/test if configured or auto-detectable. Missing gates are skipped.
+# Returns gate config (key=cmd) for those available.
+bt_get_gate_config() {
   local detected
   detected="$(bt__gate_detect 2>/dev/null || true)"
 
@@ -57,40 +57,53 @@ bt_run_gates() {
     done <<<"$detected"
   fi
 
+  [[ -n "$lint" ]] && printf 'lint=%s\n' "$lint"
+  [[ -n "$typecheck" ]] && printf 'typecheck=%s\n' "$typecheck"
+  [[ -n "$test" ]] && printf 'test=%s\n' "$test"
+}
+
+# Runs gates and returns a JSON string fragment with results.
+# Writes logs to stderr. Returns 0 if all gates passed, 1 otherwise.
+bt_run_gates() {
+  local config
+  config="$(bt_get_gate_config)"
+
+  local line k v
+  local results_json=""
+  local overall_ok=0
   local any=0
 
-  if [[ -n "$lint" ]]; then
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
     any=1
-    bt_info "gate: lint ($lint)"
-    if ! (cd "$BT_PROJECT_ROOT" && bash -lc "$lint"); then
-      bt_err "gate failed: lint"
-      return 1
+    k="${line%%=*}"
+    v="${line#*=}"
+
+    bt_info "gate: $k ($v)"
+    local status=0
+    # Use bash -lc for interactivity if needed, but we typically want it non-interactive.
+    # The original used bash -lc "$v". We'll stick to that but capture status.
+    if ! (cd "$BT_PROJECT_ROOT" && bash -lc "$v"); then
+      bt_err "gate failed: $k"
+      status=1
+      overall_ok=1
     fi
-  else
-    bt_warn "gate: lint skipped (no BT_GATE_LINT and no auto-detect)"
+
+    local entry
+    printf -v entry '"%s": {"cmd": "%s", "status": %d}' "$k" "$v" "$status"
+    if [[ -z "$results_json" ]]; then
+      results_json="$entry"
+    else
+      results_json="$results_json, $entry"
+    fi
+  done <<<"$config"
+
+  if [[ "$any" == "0" ]]; then
+    bt_warn "no gates ran"
+    printf '{"ts": "%s", "results": {}}\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+    return 0
   fi
 
-  if [[ -n "$typecheck" ]]; then
-    any=1
-    bt_info "gate: typecheck ($typecheck)"
-    if ! (cd "$BT_PROJECT_ROOT" && bash -lc "$typecheck"); then
-      bt_err "gate failed: typecheck"
-      return 1
-    fi
-  else
-    bt_warn "gate: typecheck skipped (no BT_GATE_TYPECHECK and no auto-detect)"
-  fi
-
-  if [[ -n "$test" ]]; then
-    any=1
-    bt_info "gate: test ($test)"
-    if ! (cd "$BT_PROJECT_ROOT" && bash -lc "$test"); then
-      bt_err "gate failed: test"
-      return 1
-    fi
-  else
-    bt_warn "gate: test skipped (no BT_GATE_TEST and no auto-detect)"
-  fi
-
-  [[ "$any" == "1" ]] || bt_warn "no gates ran"
+  printf '{"ts": "%s", "results": {%s}}\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$results_json"
+  return "$overall_ok"
 }

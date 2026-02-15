@@ -164,7 +164,7 @@ if [[ -z "$out" ]]; then
   # full-auto path; do nothing
   exit 0
 fi
-printf '%s\\n' \"# Review from stub\" \"Findings: none\" > \"$out\"
+printf '%s\\n' "# Review from stub" "Findings: none" > "$out"
 exit 0
 `
   );
@@ -192,6 +192,7 @@ test("command routing: each command --help exits 0", () => {
     "compound",
     "design",
     "status",
+    "gates",
     "reset",
   ];
   for (const c of cmds) {
@@ -288,7 +289,7 @@ test("notify hook is invoked when BT_NOTIFY_HOOK is set", () => {
   const out = path.join(cwd, "hook.out");
   writeFile(
     hook,
-    `#!/usr/bin/env bash\nset -euo pipefail\necho \"$*\" >> ${JSON.stringify(out)}\n`
+    `#!/usr/bin/env bash\nset -euo pipefail\necho "$*" >> ${JSON.stringify(out)}\n`
   );
   fs.chmodSync(hook, 0o755);
 
@@ -299,6 +300,51 @@ test("notify hook is invoked when BT_NOTIFY_HOOK is set", () => {
   assert.ok(fs.existsSync(out), "hook output missing");
   const content = fs.readFileSync(out, "utf8");
   assert.match(content, /bt bootstrap complete/i);
+});
+
+test("gates behavior: records to state or feature gates.json with detailed JSON", () => {
+  const cwd = mkTmp();
+  writeFile(
+    path.join(cwd, ".bt.env"),
+    [
+      "BT_SPECS_DIR=specs",
+      "BT_STATE_DIR=.bt",
+      "BT_GATE_TEST=true",
+      "BT_GATE_LINT=false", // simulate failure
+      "",
+    ].join("\n")
+  );
+
+  // 1. Global gates
+  const res = runBt(["gates"], { cwd });
+  assert.equal(res.code, 1, "should fail due to LINT=false");
+
+  const gatesJson = path.join(cwd, ".bt", "state", "gates.json");
+  assert.ok(fs.existsSync(gatesJson), "global gates.json missing");
+  const data = JSON.parse(fs.readFileSync(gatesJson, "utf8"));
+  assert.ok(data.ts);
+  assert.equal(data.results.test.status, 0);
+  assert.equal(data.results.lint.status, 1);
+
+  // Check status output includes gates with failure detail
+  const st = runBt(["status"], { cwd });
+  assert.equal(st.code, 0);
+  assert.match(st.stdout, /global:\s*\[gates:fail.*\(lint\)/);
+
+  // 2. Feature-specific gates
+  const spec = runBt(["spec", "feat-g"], { cwd });
+  assert.equal(spec.code, 0);
+
+  const res2 = runBt(["gates", "feat-g"], { cwd });
+  assert.equal(res2.code, 1);
+
+  const featGatesJson = path.join(cwd, "specs", "feat-g", "gates.json");
+  assert.ok(fs.existsSync(featGatesJson), "feature gates.json missing");
+  const data2 = JSON.parse(fs.readFileSync(featGatesJson, "utf8"));
+  assert.equal(data2.results.lint.status, 1);
+
+  const st2 = runBt(["status"], { cwd });
+  assert.match(st2.stdout, /feature: feat-g.*\[gates:fail.*\(lint\)/);
 });
 
 if (process.exitCode) process.exit(process.exitCode);

@@ -29,6 +29,8 @@ source "$BT_ROOT/lib/notify.sh"
 # shellcheck source=/dev/null
 source "$BT_ROOT/lib/codex.sh"
 # shellcheck source=/dev/null
+source "$BT_ROOT/lib/state.sh"
+# shellcheck source=/dev/null
 source "$BT_ROOT/lib/gates.sh"
 
 bt_usage() {
@@ -39,7 +41,7 @@ Usage:
   bt <command> [args]
 
 Commands:
-  bootstrap  spec  research  implement  review  fix  compound  design  status  reset
+  bootstrap  spec  research  implement  review  fix  compound  design  status  gates  reset
 
 Global options:
   -h, --help     Show help
@@ -63,7 +65,7 @@ bt_dispatch() {
   bt_env_load || true
 
   case "$cmd" in
-    bootstrap|spec|research|implement|review|fix|compound|design|status|reset) ;;
+    bootstrap|spec|research|implement|review|fix|compound|design|status|gates|reset) ;;
     *)
       bt_err "unknown command: $cmd"
       bt_usage >&2
