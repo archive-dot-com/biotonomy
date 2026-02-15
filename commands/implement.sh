@@ -30,7 +30,12 @@ EOF
   local codex_ec=0
   if bt_codex_available; then
     bt_info "running codex (full-auto) using prompts/implement.md"
-    if ! BT_FEATURE="$feature" bt_codex_exec_full_auto "$BT_ROOT/prompts/implement.md"; then
+    local artifacts_dir codex_errf
+    artifacts_dir="$dir/.artifacts"
+    mkdir -p "$artifacts_dir"
+    codex_errf="$artifacts_dir/codex-implement.stderr"
+    : >"$codex_errf"
+    if ! BT_FEATURE="$feature" bt_codex_exec_full_auto "$BT_ROOT/prompts/implement.md" 2> >(tee "$codex_errf" >&2); then
       codex_ec=$?
       bt_warn "codex exited non-zero (implement): $codex_ec"
     fi

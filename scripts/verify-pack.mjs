@@ -39,6 +39,7 @@ const mustHave = [
   "commands/bootstrap.sh",
   "lib/env.sh",
   "prompts/implement.md",
+  "scripts/gh-pr.sh",
 ];
 for (const p of mustHave) {
   assert.ok(files.includes(p), `pack missing required file: ${p}`);
@@ -51,4 +52,3 @@ for (const p of mustNotHave) {
 }
 
 process.stderr.write(`ok - pack includes ${files.length} files\n`);
-

@@ -30,6 +30,23 @@ ls -R specs/demo-feature
 sed -n '1,80p' specs/demo-feature/REVIEW.md
 ```
 
+## Issue #3 Real Loop (End-to-End, Deterministic)
+
+This repo includes an end-to-end "real loop" runner that:
+- runs the actual `bt.sh` entrypoint
+- uses a deterministic workspace
+- stubs `gh` and `codex` so it is reproducible offline
+- writes a scrubbed transcript + snapshot under `specs/issue-3-real-loop/`
+
+```bash
+npm install
+npm run demo
+
+ls -R specs/issue-3-real-loop
+sed -n '1,120p' specs/issue-3-real-loop/transcript.txt
+sed -n '1,120p' specs/issue-3-real-loop/snapshot.txt
+```
+
 ## Install
 
 Global install:
@@ -102,3 +119,14 @@ npm run lint
 ```
 
 Lint uses `shellcheck` if it is installed; otherwise it skips with a warning.
+
+## PR Automation (Opt-In)
+
+If you use GitHub CLI (`gh`), there is a safe helper that defaults to `--dry-run`:
+
+```bash
+npm run pr:open -- issue-3 --dry-run
+npm run pr:open -- issue-3 --run
+```
+
+It determines the branch from `specs/<feature>/SPEC.md` frontmatter (`branch:`) when present, otherwise uses `feat/<feature>`.

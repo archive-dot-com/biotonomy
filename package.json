@@ -28,6 +28,7 @@
     "test": "node tests/run.mjs",
     "lint": "bash scripts/lint-shell.sh",
     "demo": "bash scripts/demo-issue-3-real-loop.sh",
+    "pr:open": "bash scripts/gh-pr.sh",
     "verify:pack": "node scripts/verify-pack.mjs",
     "prepublishOnly": "npm test && npm run lint && npm run verify:pack"
   },
