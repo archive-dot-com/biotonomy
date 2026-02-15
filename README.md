@@ -1,17 +1,76 @@
 # biotonomy
 
-Autonomous feature shipping for Codex.
+Autonomous feature shipping for Codex: a lean, file-based development loop you run from a repo via `bt`.
 
 ## Install
 
+Global install:
+
 ```bash
 npm install -g biotonomy
+bt --help
+```
+
+Local (repo) usage:
+
+```bash
+npx biotonomy --help
 ```
 
 ## Quickstart
 
+In the repo you want Biotonomy to operate on:
+
 ```bash
 bt bootstrap
+bt spec 123
+bt research issue-123
+bt implement issue-123
+bt review issue-123
+bt fix issue-123
 bt status
 ```
 
+Notes:
+- Configuration is project-local in `.bt.env` (loaded automatically by searching upward from your cwd).
+- State is file-based under `specs/<feature>/`.
+- Notifications are hook-based via `BT_NOTIFY_HOOK`.
+- If `codex` is installed, some commands will invoke it; otherwise they degrade to stubs.
+
+## Architecture
+
+Biotonomy is intentionally minimal bash:
+
+- `bt.sh`: CLI entrypoint and router
+- `commands/*.sh`: command implementations (v0.1.0 stubs are runnable)
+- `lib/*.sh`: shared helpers (env loading, state paths, notifications)
+- `prompts/*.md`: prompt templates for Codex stages (implement/review/fix/research)
+- `hooks/*`: example notification hooks (e.g. Telegram)
+
+### Configuration: `.bt.env`
+
+Biotonomy loads `.bt.env` without `source` (it parses `KEY=VALUE` lines) to avoid executing arbitrary code.
+
+Common variables:
+- `BT_SPECS_DIR` (default `specs`)
+- `BT_STATE_DIR` (default `.bt`)
+- `BT_NOTIFY_HOOK` (optional executable script path)
+- `BT_GATE_LINT`, `BT_GATE_TYPECHECK`, `BT_GATE_TEST` (optional command overrides; auto-detect is future work)
+- `BT_CODEX_BIN` (optional; defaults to `codex`)
+
+### Notifications
+
+If `BT_NOTIFY_HOOK` is set to an executable path, Biotonomy calls it with a single message string.
+
+Example: `hooks/telegram.sh` expects:
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHAT_ID`
+
+## Development
+
+```bash
+npm test
+npm run lint
+```
+
+Lint uses `shellcheck` if it is installed; otherwise it skips with a warning.

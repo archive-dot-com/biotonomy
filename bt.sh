@@ -1,9 +1,37 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-usage() {
-  cat <<'EOF'
-biotonomy (bt) v0.1.0
+BT_VERSION="0.1.0"
+
+bt_script_dir() {
+  local src="${BASH_SOURCE[0]}"
+  while [ -h "$src" ]; do
+    local dir
+    dir="$(cd -P "$(dirname "$src")" && pwd)"
+    src="$(readlink "$src")"
+    [[ "$src" != /* ]] && src="$dir/$src"
+  done
+  cd -P "$(dirname "$src")" && pwd
+}
+
+BT_ROOT="$(bt_script_dir)"
+
+# shellcheck source=/dev/null
+source "$BT_ROOT/lib/log.sh"
+# shellcheck source=/dev/null
+source "$BT_ROOT/lib/path.sh"
+# shellcheck source=/dev/null
+source "$BT_ROOT/lib/env.sh"
+# shellcheck source=/dev/null
+source "$BT_ROOT/lib/notify.sh"
+# shellcheck source=/dev/null
+source "$BT_ROOT/lib/codex.sh"
+# shellcheck source=/dev/null
+source "$BT_ROOT/lib/gates.sh"
+
+bt_usage() {
+  cat <<EOF
+biotonomy (bt) v$BT_VERSION
 
 Usage:
   bt <command> [args]
@@ -11,18 +39,50 @@ Usage:
 Commands:
   bootstrap  spec  research  implement  review  fix  compound  design  status  reset
 
-Run:
-  bt <command> --help
+Global options:
+  -h, --help     Show help
+  BT_ENV_FILE    Explicit path to a .bt.env (otherwise search upward from cwd)
+
+Examples:
+  bt bootstrap
+  bt spec 123
+  bt status
 EOF
 }
 
-cmd="${1:-help}"
-case "$cmd" in
-  -h|--help|help) usage ;;
-  *)
-    echo "bt: command '$cmd' not implemented yet" >&2
-    usage >&2
-    exit 2
-    ;;
-esac
+bt_dispatch() {
+  local cmd="${1:-help}"
+  shift || true
 
+  case "$cmd" in
+    -h|--help|help) bt_usage; return 0 ;;
+  esac
+
+  bt_env_load || true
+
+  case "$cmd" in
+    bootstrap|spec|research|implement|review|fix|compound|design|status|reset) ;;
+    *)
+      bt_err "unknown command: $cmd"
+      bt_usage >&2
+      return 2
+      ;;
+  esac
+
+  local cmd_file="$BT_ROOT/commands/$cmd.sh"
+  if [[ ! -f "$cmd_file" ]]; then
+    bt_die "missing command implementation: $cmd_file"
+  fi
+
+  # shellcheck source=/dev/null
+  source "$cmd_file"
+
+  local fn="bt_cmd_$cmd"
+  if ! declare -F "$fn" >/dev/null 2>&1; then
+    bt_die "command function not found: $fn (in $cmd_file)"
+  fi
+
+  "$fn" "$@"
+}
+
+bt_dispatch "$@"
