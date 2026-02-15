@@ -26,7 +26,10 @@
   ],
   "scripts": {
     "test": "node tests/run.mjs",
-    "lint": "bash scripts/lint-shell.sh"
+    "lint": "bash scripts/lint-shell.sh",
+    "demo": "bash scripts/demo-issue-3-real-loop.sh",
+    "verify:pack": "node scripts/verify-pack.mjs",
+    "prepublishOnly": "npm test && npm run lint && npm run verify:pack"
   },
   "engines": {
     "node": ">=18"
