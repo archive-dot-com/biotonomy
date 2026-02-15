@@ -1,36 +1,114 @@
-# biotonomy
+# Biotonomy
 
-Autonomous feature shipping for Codex: a lean, file-based development loop you run from a repo via `bt`.
+Biotonomy is a CLI that runs Codex loops (research→implement→review→fix) inside your repo.
+It enforces quality gates (lint/typecheck/test) between stages and records everything as files.
+PR automation is next: the repo has an opt-in `gh` helper today, and first-class PR flows are planned.
 
-## What is real today (v0.1.0)
+Biotonomy is intentionally file-based:
+- project config lives in `.bt.env`
+- ephemeral state lives in `.bt/`
+- feature state lives in `specs/<feature>/`
 
-- This is a minimal bash CLI that writes state into your repo (`.bt/`, `specs/<feature>/...`).
-- `bt bootstrap`, `bt spec <feature>`, and `bt status` are fully usable without Codex.
-- `bt review` works without Codex (it writes a stub output if Codex is unavailable).
-- `bt implement` and `bt fix` will run quality gates; if Codex is unavailable they act as stubs (they record history/progress and still run gates).
-- `bt research` requires Codex.
+## The Codex Loop
 
-## 60s demo
+For a feature folder `specs/<feature>/`, the loop is:
 
-In any repo (or a scratch folder):
+1. `bt spec <feature>`: create `SPEC.md` (or `bt spec <issue#>` to pull from GitHub via `gh`)
+2. `bt research <feature>`: Codex writes `RESEARCH.md` (Codex required)
+3. `bt implement <feature>`: Codex applies code changes + Biotonomy runs quality gates
+4. `bt review <feature>`: Codex reviews into `REVIEW.md` (writes a stub if Codex is missing)
+5. `bt fix <feature>`: Codex applies targeted fixes + Biotonomy runs quality gates
+
+Supporting commands:
+- `bt status`: summarize story status from `SPEC.md` plus latest `gates.json` (if present)
+- `bt gates [<feature>]`: run gates and write `gates.json` (feature-local or global)
+- `bt reset`: delete `.bt/` and `specs/**/.lock` (does not modify your git working tree)
+
+## Ship Archie (Walkthrough)
+
+This is the intended "ship a feature" path. Some steps are still manual; each TODO points at the tracking issue.
 
 ```bash
+# 0) Install
 npm install -g biotonomy
 
-mkdir -p /tmp/bt-demo && cd /tmp/bt-demo
-git init
-
+# 1) Initialize the repo for Biotonomy (creates .bt.env, specs/, .bt/)
 bt bootstrap
-bt spec demo-feature
-bt implement demo-feature   # runs gates (if any) + records history
-bt review demo-feature      # writes specs/demo-feature/REVIEW.md (stub if Codex is missing)
-bt status
 
-ls -R specs/demo-feature
-sed -n '1,80p' specs/demo-feature/REVIEW.md
+# 2) Create a spec (local feature name)
+bt spec archie
+
+# (Optional) If "Archie" is a GitHub issue:
+# bt spec 123   # pulls issue title/body via `gh` into specs/issue-123/SPEC.md
+
+# 3) Research (requires Codex; see Issue #3 for the end-to-end loop/demo harness)
+bt research archie
+
+# 4) Implement (runs gates; if Codex is unavailable this records history and still runs gates)
+bt implement archie
+
+# 5) Review (writes specs/archie/REVIEW.md; stub output if Codex is unavailable)
+bt review archie
+
+# 6) Fix until review is clean (gates are re-run)
+bt fix archie
+
+# 7) Check progress at any time
+bt status
 ```
 
-## Issue #3 Real Loop (End-to-End, Deterministic)
+TODOs and tracked work:
+- Deterministic end-to-end loop runner + offline stubs: [Issue #3](https://github.com/archive-dot-com/biotonomy/issues/3)
+- Make implement/review/fix tighter as an explicit "repeat until APPROVE + gates pass" loop: [Issue #4](https://github.com/archive-dot-com/biotonomy/issues/4), [Issue #5](https://github.com/archive-dot-com/biotonomy/issues/5), [Issue #6](https://github.com/archive-dot-com/biotonomy/issues/6)
+- Harden/expand quality gates and configuration: [Issue #7](https://github.com/archive-dot-com/biotonomy/issues/7)
+- First-class PR automation (not just a script): [Issue #8](https://github.com/archive-dot-com/biotonomy/issues/8)
+
+## Artifacts And Layout
+
+Biotonomy is minimal bash plus prompt templates:
+- `bt.sh`: CLI entrypoint and router
+- `commands/*.sh`: command implementations
+- `lib/*.sh`: shared helpers (env loading, state paths, notifications, gates, Codex exec)
+- `prompts/*.md`: prompt templates for Codex stages
+- `hooks/*`: example notification hooks
+
+On disk, expect:
+- `.bt.env`: project config (parsed as `KEY=VALUE` without `source` / without executing code)
+- `.bt/`: ephemeral state (locks/caches; safe to delete via `bt reset`)
+- `specs/<feature>/SPEC.md`: plan and story statuses (parseable; created by `bt spec`)
+- `specs/<feature>/RESEARCH.md`: research notes (`bt research`)
+- `specs/<feature>/REVIEW.md`: review verdict + findings (`bt review`)
+- `specs/<feature>/gates.json`: latest gate results when running `bt gates <feature>`
+- `specs/<feature>/progress.txt`: timestamped progress log
+- `specs/<feature>/history/*.md`: append-only run history for each stage
+- `specs/<feature>/.artifacts/*`: captured stderr from Codex/gh for debugging/repro
+
+## Quality Gates
+
+Stages that run gates:
+- `bt implement <feature>`
+- `bt fix <feature>`
+- `bt gates [<feature>]`
+
+Gate configuration:
+- Override per-project in `.bt.env` via `BT_GATE_LINT`, `BT_GATE_TYPECHECK`, `BT_GATE_TEST`
+- If unset, Biotonomy tries simple auto-detection (npm/yarn/pnpm/Makefile)
+
+## PR Automation (Opt-In Today)
+
+There is currently a safe helper script (defaults to `--dry-run`) that uses `git` and `gh`:
+
+```bash
+npm run pr:open -- archie --dry-run
+npm run pr:open -- archie --run
+```
+
+It determines the branch from `specs/<feature>/SPEC.md` frontmatter (`branch:`) when present, otherwise uses `feat/<feature>`.
+The planned end state is a first-class `bt pr ...` flow. Tracked in [Issue #8](https://github.com/archive-dot-com/biotonomy/issues/8).
+
+## Demos
+
+### Issue #3 Real Loop (End-to-End, Deterministic)
 
 This repo includes an end-to-end "real loop" runner that:
 - runs the actual `bt.sh` entrypoint
@@ -62,54 +140,23 @@ Local (repo) usage:
 npx biotonomy --help
 ```
 
-## Quickstart
+## Status (v0.1.0)
 
-In the repo you want Biotonomy to operate on:
+Implemented today:
+- File-based loop artifacts: `.bt.env`, `.bt/`, `specs/<feature>/...`
+- `bt bootstrap`, `bt spec <feature>`, `bt status`, `bt gates`, `bt reset`
+- `bt review` produces `REVIEW.md` even without Codex (stub output + required `Verdict:` line)
+- `bt implement` and `bt fix` always run quality gates and record history; if Codex is missing they behave as stubs (no code changes)
+- `bt research` requires Codex (it dies early if `codex` is not available)
+- Opt-in PR helper (`npm run pr:open`) with `--dry-run` by default
 
-```bash
-bt bootstrap
-bt spec 123
-bt research issue-123
-bt implement issue-123
-bt review issue-123
-bt fix issue-123
-bt status
-```
-
-Notes:
-- Configuration is project-local in `.bt.env` (loaded automatically by searching upward from your cwd).
-- State is file-based under `specs/<feature>/`.
-- Notifications are hook-based via `BT_NOTIFY_HOOK`.
-- If `codex` is installed, some commands will invoke it; otherwise they degrade to stubs (except `bt research`, which requires Codex).
-
-## Architecture
-
-Biotonomy is intentionally minimal bash:
-
-- `bt.sh`: CLI entrypoint and router
-- `commands/*.sh`: command implementations (v0.1.0 stubs are runnable)
-- `lib/*.sh`: shared helpers (env loading, state paths, notifications)
-- `prompts/*.md`: prompt templates for Codex stages (implement/review/fix/research)
-- `hooks/*`: example notification hooks (e.g. Telegram)
-
-### Configuration: `.bt.env`
-
-Biotonomy loads `.bt.env` without `source` (it parses `KEY=VALUE` lines) to avoid executing arbitrary code.
-
-Common variables:
-- `BT_SPECS_DIR` (default `specs`)
-- `BT_STATE_DIR` (default `.bt`)
-- `BT_NOTIFY_HOOK` (optional executable script path)
-- `BT_GATE_LINT`, `BT_GATE_TYPECHECK`, `BT_GATE_TEST` (optional command overrides; auto-detect is future work)
-- `BT_CODEX_BIN` (optional; defaults to `codex`)
-
-### Notifications
-
-If `BT_NOTIFY_HOOK` is set to an executable path, Biotonomy calls it with a single message string.
-
-Example: `hooks/telegram.sh` expects:
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_CHAT_ID`
+In progress (tracked in issues):
+- [Issue #3](https://github.com/archive-dot-com/biotonomy/issues/3): core loop demo harness + deterministic runner
+- [Issue #4](https://github.com/archive-dot-com/biotonomy/issues/4): implement stage reliability and repeatability
+- [Issue #5](https://github.com/archive-dot-com/biotonomy/issues/5): review stage contract and enforcement
+- [Issue #6](https://github.com/archive-dot-com/biotonomy/issues/6): fix stage iteration (close the loop from REVIEW.md back to green gates)
+- [Issue #7](https://github.com/archive-dot-com/biotonomy/issues/7): quality gates (auto-detect, reporting, policy)
+- [Issue #8](https://github.com/archive-dot-com/biotonomy/issues/8): PR automation (first-class workflows)
 
 ## Development
 
@@ -118,15 +165,4 @@ npm test
 npm run lint
 ```
 
-Lint uses `shellcheck` if it is installed; otherwise it skips with a warning.
-
-## PR Automation (Opt-In)
-
-If you use GitHub CLI (`gh`), there is a safe helper that defaults to `--dry-run`:
-
-```bash
-npm run pr:open -- issue-3 --dry-run
-npm run pr:open -- issue-3 --run
-```
-
-It determines the branch from `specs/<feature>/SPEC.md` frontmatter (`branch:`) when present, otherwise uses `feat/<feature>`.
+Lint uses `shellcheck` if it is installed; otherwise it skips with a warning (CI installs shellcheck and runs strict).
