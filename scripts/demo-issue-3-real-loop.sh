@@ -53,8 +53,14 @@ demo_sed_inplace() {
 run_bt() {
   local -a args=("$@")
   # bt logs to stderr; capture both, and normalize ANSI coloring.
-  BT_NO_COLOR=1 LC_ALL=C LANG=C PATH="$BIN:$PATH" \
-    (cd "$WORK" && bash "$BT" "${args[@]}") 2>&1
+  (
+    export BT_NO_COLOR=1
+    export LC_ALL=C
+    export LANG=C
+    export PATH="$BIN:$PATH"
+    cd "$WORK"
+    bash "$BT" "${args[@]}"
+  ) 2>&1
 }
 
 write_stub_gh() {
@@ -213,4 +219,3 @@ demo_sed_inplace "s#${WORK}#<WORK>#g" "$snap"
 
 echo "demo: wrote $out" >&2
 echo "demo: wrote $snap" >&2
-
