@@ -32,6 +32,11 @@ function writeFile(p, s) {
   fs.writeFileSync(p, s, "utf8");
 }
 
+function writeExe(p, s) {
+  writeFile(p, s);
+  fs.chmodSync(p, 0o755);
+}
+
 function test(name, fn) {
   try {
     fn();
@@ -115,6 +120,88 @@ test("command routing: each command --help exits 0", () => {
     const res = runBt([c, "--help"]);
     assert.equal(res.code, 0, `${c} help failed: ${res.stderr}`);
   }
+});
+
+test("spec issue#: stubs gh via PATH and writes specs/issue-<n>/SPEC.md", () => {
+  const cwd = mkTmp();
+  writeFile(path.join(cwd, ".bt.env"), "BT_REPO=acme-co/biotonomy\n");
+
+  const bin = path.join(cwd, "bin");
+  const ghLog = path.join(cwd, "gh.args");
+  const gh = path.join(bin, "gh");
+  writeExe(
+    gh,
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$@" >> ${JSON.stringify(ghLog)}
+if [[ "$1" == "issue" && "$2" == "view" ]]; then
+  # Emit JSON like gh would.
+  cat <<'JSON'
+{"title":"Core loop (Codex + gh integration)","url":"https://github.com/acme-co/biotonomy/issues/3","body":"Line 1\\n\\nLine 2 with   extra   spaces"}
+JSON
+  exit 0
+fi
+echo "unexpected gh invocation" >&2
+exit 2
+`
+  );
+
+  const res = runBt(["spec", "3"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stderr);
+
+  const specPath = path.join(cwd, "specs", "issue-3", "SPEC.md");
+  assert.ok(fs.existsSync(specPath), "SPEC.md missing");
+  const spec = fs.readFileSync(specPath, "utf8");
+  assert.match(spec, /issue:\s*3/);
+  assert.match(spec, /repo:\s*acme-co\/biotonomy/);
+  assert.match(spec, /# Problem/);
+  assert.match(spec, /## Core loop \(Codex \+ gh integration\)/);
+  assert.match(spec, /\*\*link:\*\* https:\/\/github\.com\/acme-co\/biotonomy\/issues\/3/);
+  assert.match(spec, /Line 1 Line 2 with extra spaces/); // whitespace collapsed
+  assert.match(spec, /## Footer/);
+  assert.match(spec, /`gh issue view 3 -R acme-co\/biotonomy --json title,body,url`/);
+
+  const args = fs.readFileSync(ghLog, "utf8");
+  assert.match(args, /^issue\nview\n3\n-R\nacme-co\/biotonomy\n--json\ntitle,body,url\n/m);
+});
+
+test("repo resolution: uses git remote origin when available (no BT_REPO)", () => {
+  const cwd = mkTmp();
+  const r = (cmd) =>
+    spawnSync("bash", ["-lc", cmd], { cwd, encoding: "utf8" });
+
+  let res = r("git init -q");
+  assert.equal(res.status, 0, res.stderr);
+  res = r("git remote add origin https://github.com/o-rg/r-epo.git");
+  assert.equal(res.status, 0, res.stderr);
+
+  const bin = path.join(cwd, "bin");
+  const gh = path.join(bin, "gh");
+  writeExe(
+    gh,
+    `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" == "issue" && "$2" == "view" ]]; then
+  cat <<'JSON'
+{"title":"T","url":"https://github.com/o-rg/r-epo/issues/5","body":"B"}
+JSON
+  exit 0
+fi
+exit 2
+`
+  );
+
+  const btRes = runBt(["spec", "5"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(btRes.code, 0, btRes.stderr);
+  const specPath = path.join(cwd, "specs", "issue-5", "SPEC.md");
+  const spec = fs.readFileSync(specPath, "utf8");
+  assert.match(spec, /repo:\s*o-rg\/r-epo/);
 });
 
 test("notify hook is invoked when BT_NOTIFY_HOOK is set", () => {

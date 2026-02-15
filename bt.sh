@@ -23,6 +23,8 @@ source "$BT_ROOT/lib/path.sh"
 # shellcheck source=/dev/null
 source "$BT_ROOT/lib/env.sh"
 # shellcheck source=/dev/null
+source "$BT_ROOT/lib/repo.sh"
+# shellcheck source=/dev/null
 source "$BT_ROOT/lib/notify.sh"
 # shellcheck source=/dev/null
 source "$BT_ROOT/lib/codex.sh"
