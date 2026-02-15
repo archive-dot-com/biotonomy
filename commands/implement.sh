@@ -10,7 +10,7 @@ bt_cmd_implement() {
 Usage:
   bt implement <feature>
 
-Stubbed in v0.1.0: records an implement iteration marker in history/progress.
+Runs Codex in full-auto using prompts/implement.md, then runs quality gates.
 EOF
     return 0
   fi
@@ -25,12 +25,17 @@ EOF
   dir="$(bt_feature_dir "$feature")"
   [[ -d "$dir" ]] || bt_die "missing feature dir: $dir (run: bt spec ...)"
 
-  bt_progress_append "$feature" "implement iteration"
+  bt_progress_append "$feature" "implement: bt implement $feature (starting)"
 
+  local codex_ec=0
   if bt_codex_available; then
     bt_info "running codex (full-auto) using prompts/implement.md"
-    bt_codex_exec_full_auto "$BT_ROOT/prompts/implement.md" || bt_warn "codex exited non-zero (implement)"
+    if ! BT_FEATURE="$feature" bt_codex_exec_full_auto "$BT_ROOT/prompts/implement.md"; then
+      codex_ec=$?
+      bt_warn "codex exited non-zero (implement): $codex_ec"
+    fi
   else
+    codex_ec=127
     bt_warn "codex unavailable; implement is a v0.1.0 stub"
   fi
 
@@ -43,7 +48,16 @@ EOF
   fi
 
   local h
-  h="$(bt_history_write "$feature" "implement" "$(cat "$BT_ROOT/prompts/implement.md" 2>/dev/null || echo 'implement prompt missing')")"
+  h="$(bt_history_write "$feature" "implement" "$(cat <<EOF
+# Implement Run: $feature
+
+- when: $(date +'%Y-%m-%d %H:%M:%S')
+- bt_cmd: bt implement $feature
+- prompt: prompts/implement.md
+- codex_exit: $codex_ec
+- gates: $([[ "$gates_ok" == "1" ]] && echo PASS || echo FAIL)
+EOF
+)")"
   bt_info "wrote history: $h"
   bt_notify "bt implement complete for $feature"
 

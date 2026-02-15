@@ -103,6 +103,84 @@ test("implement fails when a configured gate fails", () => {
   assert.match(impl.stderr, /gate failed: test/i);
 });
 
+test("research writes RESEARCH.md (stubs codex via PATH)", () => {
+  const cwd = mkTmp();
+
+  const spec = runBt(["spec", "feat-r"], { cwd });
+  assert.equal(spec.code, 0, spec.stderr);
+
+  const bin = path.join(cwd, "bin");
+  const codex = path.join(bin, "codex");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" != "exec" ]]; then
+  echo "unexpected codex invocation" >&2
+  exit 2
+fi
+# Full-auto research: intentionally do NOT write RESEARCH.md so bt creates a stub.
+exit 0
+`
+  );
+
+  const res = runBt(["research", "feat-r"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stderr);
+
+  const out = path.join(cwd, "specs", "feat-r", "RESEARCH.md");
+  assert.ok(fs.existsSync(out), "RESEARCH.md missing");
+  const content = fs.readFileSync(out, "utf8");
+  assert.match(content, /^# Research: feat-r/m);
+});
+
+test("review writes REVIEW.md with Verdict: (stubs codex via PATH)", () => {
+  const cwd = mkTmp();
+
+  const spec = runBt(["spec", "feat-v"], { cwd });
+  assert.equal(spec.code, 0, spec.stderr);
+
+  const bin = path.join(cwd, "bin");
+  const codex = path.join(bin, "codex");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" != "exec" ]]; then
+  echo "unexpected codex invocation" >&2
+  exit 2
+fi
+shift
+out=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o) shift; out="$1"; shift ;;
+    *) shift ;;
+  esac
+done
+if [[ -z "$out" ]]; then
+  # full-auto path; do nothing
+  exit 0
+fi
+printf '%s\\n' \"# Review from stub\" \"Findings: none\" > \"$out\"
+exit 0
+`
+  );
+
+  const res = runBt(["review", "feat-v"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stderr);
+
+  const out = path.join(cwd, "specs", "feat-v", "REVIEW.md");
+  assert.ok(fs.existsSync(out), "REVIEW.md missing");
+  const content = fs.readFileSync(out, "utf8");
+  assert.match(content, /^Verdict:/im);
+});
+
 test("command routing: each command --help exits 0", () => {
   const cmds = [
     "bootstrap",

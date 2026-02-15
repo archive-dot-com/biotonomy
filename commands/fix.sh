@@ -10,7 +10,7 @@ bt_cmd_fix() {
 Usage:
   bt fix <feature>
 
-Stubbed in v0.1.0: records a fix iteration marker in history/progress.
+Runs Codex in full-auto using prompts/fix.md, then runs quality gates.
 EOF
     return 0
   fi
@@ -25,12 +25,17 @@ EOF
   dir="$(bt_feature_dir "$feature")"
   [[ -d "$dir" ]] || bt_die "missing feature dir: $dir (run: bt spec ...)"
 
-  bt_progress_append "$feature" "fix iteration"
+  bt_progress_append "$feature" "fix: bt fix $feature (starting)"
 
+  local codex_ec=0
   if bt_codex_available; then
     bt_info "running codex (full-auto) using prompts/fix.md"
-    bt_codex_exec_full_auto "$BT_ROOT/prompts/fix.md" || bt_warn "codex exited non-zero (fix)"
+    if ! BT_FEATURE="$feature" bt_codex_exec_full_auto "$BT_ROOT/prompts/fix.md"; then
+      codex_ec=$?
+      bt_warn "codex exited non-zero (fix): $codex_ec"
+    fi
   else
+    codex_ec=127
     bt_warn "codex unavailable; fix is a v0.1.0 stub"
   fi
 
@@ -43,7 +48,16 @@ EOF
   fi
 
   local h
-  h="$(bt_history_write "$feature" "fix" "$(cat "$BT_ROOT/prompts/fix.md" 2>/dev/null || echo 'fix prompt missing')")"
+  h="$(bt_history_write "$feature" "fix" "$(cat <<EOF
+# Fix Run: $feature
+
+- when: $(date +'%Y-%m-%d %H:%M:%S')
+- bt_cmd: bt fix $feature
+- prompt: prompts/fix.md
+- codex_exit: $codex_ec
+- gates: $([[ "$gates_ok" == "1" ]] && echo PASS || echo FAIL)
+EOF
+)")"
   bt_info "wrote history: $h"
   bt_notify "bt fix complete for $feature"
 

@@ -10,7 +10,7 @@ bt_cmd_research() {
 Usage:
   bt research <feature>
 
-Stubbed in v0.1.0: writes `RESEARCH.md` and a history entry.
+Runs Codex in full-auto using prompts/research.md and produces specs/<feature>/RESEARCH.md.
 EOF
     return 0
   fi
@@ -23,19 +23,36 @@ EOF
 
   local dir
   dir="$(bt_feature_dir "$feature")"
+  [[ -d "$dir" ]] || bt_die "missing feature dir: $dir (run: bt spec ...)"
   mkdir -p "$dir/history"
 
   local out="$dir/RESEARCH.md"
-  if bt_codex_available; then
-    bt_info "running codex (full-auto) using prompts/research.md"
-    bt_codex_exec_full_auto "$BT_ROOT/prompts/research.md" || bt_warn "codex exited non-zero (research)"
+  bt_codex_available || bt_die "codex required for research (set BT_CODEX_BIN or install codex)"
+
+  bt_info "running codex (full-auto) using prompts/research.md"
+  local codex_ec=0 codex_errf
+  codex_errf="$(mktemp "${TMPDIR:-/tmp}/bt-codex-research-err.XXXXXX")"
+  if ! BT_FEATURE="$feature" bt_codex_exec_full_auto "$BT_ROOT/prompts/research.md" 2>"$codex_errf"; then
+    codex_ec=$?
+    bt_warn "codex exited non-zero (research): $codex_ec"
   fi
 
   if [[ ! -f "$out" ]]; then
+    local err_tail
+    err_tail="$(tail -n 80 "$codex_errf" 2>/dev/null || true)"
     cat >"$out" <<EOF
 # Research: $feature
 
-Codex output missing; v0.1.0 stub.
+Codex did not create \`$out\`. A stub was generated so the loop can continue.
+
+- codex_exit: $codex_ec
+- feature_dir: $dir
+- prompt: $BT_ROOT/prompts/research.md
+- bt_cmd: bt research $feature
+
+## Codex stderr (tail)
+
+${err_tail:-"(no stderr captured)"}
 
 Next:
 - Run Codex against \`$BT_ROOT/prompts/research.md\`
@@ -43,8 +60,19 @@ Next:
 EOF
   fi
 
-  bt_progress_append "$feature" "research stub wrote RESEARCH.md"
-  bt_history_write "$feature" "research" "Wrote RESEARCH.md stub for $feature."
+  rm -f "$codex_errf" || true
+
+  bt_progress_append "$feature" "research: bt research $feature (codex_exit=$codex_ec)"
+  bt_history_write "$feature" "research" "$(cat <<EOF
+# Research Run: $feature
+
+- when: $(date +'%Y-%m-%d %H:%M:%S')
+- bt_cmd: bt research $feature
+- prompt: prompts/research.md
+- codex_exit: $codex_ec
+- output: specs/$feature/RESEARCH.md
+EOF
+)"
   [[ -f "$out" ]] && bt_info "wrote $out"
   bt_notify "bt research complete for $feature"
 }
