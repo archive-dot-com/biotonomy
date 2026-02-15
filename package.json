@@ -26,10 +26,9 @@
   ],
   "scripts": {
     "test": "node tests/run.mjs",
-    "lint": "bash scripts/lint-shell.sh && node tests/run.mjs"
+    "lint": "bash scripts/lint-shell.sh"
   },
   "engines": {
     "node": ">=18"
   }
 }
-

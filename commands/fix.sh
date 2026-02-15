@@ -34,11 +34,18 @@ EOF
     bt_warn "codex unavailable; fix is a v0.1.0 stub"
   fi
 
-  bt_info "running quality gates (best-effort)"
-  bt_run_gates || bt_warn "gates failed"
+  bt_info "running quality gates"
+  local gates_ok=1
+  if ! bt_run_gates; then
+    gates_ok=0
+    bt_progress_append "$feature" "quality gates failed"
+    bt_notify "bt fix gates FAILED for $feature"
+  fi
 
   local h
   h="$(bt_history_write "$feature" "fix" "$(cat "$BT_ROOT/prompts/fix.md" 2>/dev/null || echo 'fix prompt missing')")"
   bt_info "wrote history: $h"
-  bt_notify "bt fix stub ran for $feature"
+  bt_notify "bt fix complete for $feature"
+
+  [[ "$gates_ok" == "1" ]] || return 1
 }

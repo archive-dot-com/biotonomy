@@ -17,6 +17,11 @@ bt_ensure_dirs() {
 bt_require_feature() {
   local feature="${1:-${BT_FEATURE:-}}"
   [[ -n "$feature" ]] || bt_die "feature required (pass as first arg or set BT_FEATURE)"
+
+  # Prevent path traversal and keep on-disk state predictable.
+  [[ "$feature" != *"/"* ]] || bt_die "invalid feature (must not contain '/'): $feature"
+  [[ "$feature" != *".."* ]] || bt_die "invalid feature (must not contain '..'): $feature"
+  [[ "$feature" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || bt_die "invalid feature (allowed: A-Z a-z 0-9 . _ -): $feature"
   printf '%s\n' "$feature"
 }
 
@@ -37,13 +42,19 @@ bt_history_write() {
   dir="$(bt_feature_dir "$feature")"
   mkdir -p "$dir/history"
 
-  local n
-  n="$(ls -1 "$dir/history" 2>/dev/null | wc -l | tr -d ' ')"
-  n="$((n + 1))"
+  local max=0 f base n
+  shopt -s nullglob
+  for f in "$dir/history/"[0-9][0-9][0-9]-*.md; do
+    base="$(basename "$f")"
+    n="${base%%-*}"
+    [[ "$n" =~ ^[0-9]{3}$ ]] || continue
+    ((10#$n > max)) && max=$((10#$n))
+  done
+  shopt -u nullglob
+  n="$((max + 1))"
   printf -v n '%03d' "$n"
 
   local out="$dir/history/${n}-${stage}.md"
   printf '%s\n' "$content" >"$out"
   printf '%s\n' "$out"
 }
-

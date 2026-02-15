@@ -67,12 +67,35 @@ test("bootstrap creates .bt.env and folders", () => {
 
 test("env loading (BT_SPECS_DIR) affects status output", () => {
   const cwd = mkTmp();
-  writeFile(path.join(cwd, ".bt.env"), "BT_SPECS_DIR=specz\nBT_STATE_DIR=.bt\n");
+  writeFile(
+    path.join(cwd, ".bt.env"),
+    "export BT_SPECS_DIR=specz # inline comment\nBT_STATE_DIR=.bt\n"
+  );
   fs.mkdirSync(path.join(cwd, "specz"), { recursive: true });
 
   const res = runBt(["status"], { cwd });
   assert.equal(res.code, 0);
   assert.match(res.stdout, /specs_dir: specz/);
+});
+
+test("implement fails when a configured gate fails", () => {
+  const cwd = mkTmp();
+  writeFile(
+    path.join(cwd, ".bt.env"),
+    [
+      "BT_SPECS_DIR=specs",
+      "BT_STATE_DIR=.bt",
+      "BT_GATE_TEST=false",
+      "",
+    ].join("\n")
+  );
+
+  const spec = runBt(["spec", "feat-x"], { cwd });
+  assert.equal(spec.code, 0, spec.stderr);
+
+  const impl = runBt(["implement", "feat-x"], { cwd });
+  assert.equal(impl.code, 1);
+  assert.match(impl.stderr, /gate failed: test/i);
 });
 
 test("command routing: each command --help exits 0", () => {
@@ -114,4 +137,3 @@ test("notify hook is invoked when BT_NOTIFY_HOOK is set", () => {
 });
 
 if (process.exitCode) process.exit(process.exitCode);
-

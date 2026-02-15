@@ -23,6 +23,12 @@ bt_env_load_file() {
     [[ "$line" =~ ^[[:space:]]*# ]] && continue
     line="${line#"${line%%[![:space:]]*}"}"
 
+    # Allow common `.env` style: `export KEY=VALUE`
+    if [[ "$line" =~ ^export[[:space:]]+ ]]; then
+      line="${line#export}"
+      line="${line#"${line%%[![:space:]]*}"}"
+    fi
+
     [[ "$line" == *"="* ]] || continue
     local key="${line%%=*}"
     local val="${line#*=}"
@@ -34,6 +40,10 @@ bt_env_load_file() {
       val="${val:1:${#val}-2}"
     elif [[ "$val" =~ ^\'.*\'$ ]]; then
       val="${val:1:${#val}-2}"
+    else
+      # Strip trailing inline comments for unquoted values: `KEY=VAL # comment`
+      val="${val%%[[:space:]]#*}"
+      val="${val%"${val##*[![:space:]]}"}"
     fi
 
     bt__export_kv "$key" "$val"
@@ -70,4 +80,3 @@ bt_env_load() {
   export BT_GATE_TYPECHECK="${BT_GATE_TYPECHECK:-}"
   export BT_GATE_TEST="${BT_GATE_TEST:-}"
 }
-

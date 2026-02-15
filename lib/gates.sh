@@ -58,10 +58,14 @@ bt_run_gates() {
   fi
 
   local any=0
+
   if [[ -n "$lint" ]]; then
     any=1
     bt_info "gate: lint ($lint)"
-    (cd "$BT_PROJECT_ROOT" && bash -lc "$lint")
+    if ! (cd "$BT_PROJECT_ROOT" && bash -lc "$lint"); then
+      bt_err "gate failed: lint"
+      return 1
+    fi
   else
     bt_warn "gate: lint skipped (no BT_GATE_LINT and no auto-detect)"
   fi
@@ -69,7 +73,10 @@ bt_run_gates() {
   if [[ -n "$typecheck" ]]; then
     any=1
     bt_info "gate: typecheck ($typecheck)"
-    (cd "$BT_PROJECT_ROOT" && bash -lc "$typecheck")
+    if ! (cd "$BT_PROJECT_ROOT" && bash -lc "$typecheck"); then
+      bt_err "gate failed: typecheck"
+      return 1
+    fi
   else
     bt_warn "gate: typecheck skipped (no BT_GATE_TYPECHECK and no auto-detect)"
   fi
@@ -77,11 +84,13 @@ bt_run_gates() {
   if [[ -n "$test" ]]; then
     any=1
     bt_info "gate: test ($test)"
-    (cd "$BT_PROJECT_ROOT" && bash -lc "$test")
+    if ! (cd "$BT_PROJECT_ROOT" && bash -lc "$test"); then
+      bt_err "gate failed: test"
+      return 1
+    fi
   else
     bt_warn "gate: test skipped (no BT_GATE_TEST and no auto-detect)"
   fi
 
   [[ "$any" == "1" ]] || bt_warn "no gates ran"
 }
-
