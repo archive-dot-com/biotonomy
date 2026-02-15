@@ -2,6 +2,29 @@
 
 Autonomous feature shipping for Codex: a lean, file-based development loop you run from a repo via `bt`.
 
+## What is real today (v0.1.0)
+
+- This is a minimal bash CLI that writes state into your repo (`.bt/`, `specs/<feature>/...`).
+- `bt bootstrap`, `bt spec <feature>`, and `bt status` are fully usable without Codex.
+- `bt review` works without Codex (it writes a stub output if Codex is unavailable).
+- `bt implement` and `bt fix` will run quality gates; if Codex is unavailable they act as stubs (they record history/progress and still run gates).
+- `bt research` requires Codex.
+
+## 60s demo
+
+In any repo (or a scratch folder):
+
+```bash
+npm install -g biotonomy
+
+mkdir -p /tmp/bt-demo && cd /tmp/bt-demo
+git init
+
+bt bootstrap
+bt spec demo-feature
+bt status
+```
+
 ## Install
 
 Global install:

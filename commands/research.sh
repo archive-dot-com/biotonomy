@@ -29,10 +29,10 @@ EOF
   local out="$dir/RESEARCH.md"
   bt_codex_available || bt_die "codex required for research (set BT_CODEX_BIN or install codex)"
 
-  bt_info "running codex (full-auto) using prompts/research.md"
+  bt_info "running codex (read-only) using prompts/research.md -> $out"
   local codex_ec=0 codex_errf
   codex_errf="$(mktemp "${TMPDIR:-/tmp}/bt-codex-research-err.XXXXXX")"
-  if ! BT_FEATURE="$feature" bt_codex_exec_full_auto "$BT_ROOT/prompts/research.md" 2>"$codex_errf"; then
+  if ! BT_FEATURE="$feature" bt_codex_exec_read_only "$BT_ROOT/prompts/research.md" "$out" 2>"$codex_errf"; then
     codex_ec=$?
     bt_warn "codex exited non-zero (research): $codex_ec"
   fi
