@@ -1,0 +1,35 @@
+{
+  "name": "biotonomy",
+  "version": "0.1.0",
+  "description": "Codex-native autonomous development loop CLI",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/archive-dot-com/biotonomy.git"
+  },
+  "bugs": {
+    "url": "https://github.com/archive-dot-com/biotonomy/issues"
+  },
+  "homepage": "https://github.com/archive-dot-com/biotonomy#readme",
+  "bin": {
+    "bt": "./bt.sh"
+  },
+  "files": [
+    "bt.sh",
+    "commands/",
+    "lib/",
+    "prompts/",
+    "hooks/",
+    "scripts/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node tests/run.mjs",
+    "lint": "bash scripts/lint-shell.sh && node tests/run.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
+
