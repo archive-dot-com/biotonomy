@@ -46,8 +46,11 @@ Codex did not produce \`$out\`. A stub was generated so the loop can continue.
 - bt_cmd: bt review $feature
 EOF
   elif ! grep -qi '^Verdict:' "$out" 2>/dev/null; then
-    local tmp
-    tmp="$(mktemp "${TMPDIR:-/tmp}/bt-review.XXXXXX")"
+    local tmp artifacts_dir
+    artifacts_dir="$dir/.artifacts"
+    mkdir -p "$artifacts_dir"
+    # Deterministic temp path to keep outputs reproducible and scoped to the feature dir.
+    tmp="$artifacts_dir/review.rewrite.tmp.md"
     cat >"$tmp" <<EOF
 # Review: $feature
 

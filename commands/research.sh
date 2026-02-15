@@ -30,8 +30,12 @@ EOF
   bt_codex_available || bt_die "codex required for research (set BT_CODEX_BIN or install codex)"
 
   bt_info "running codex (read-only) using prompts/research.md -> $out"
-  local codex_ec=0 codex_errf
-  codex_errf="$(mktemp "${TMPDIR:-/tmp}/bt-codex-research-err.XXXXXX")"
+  local codex_ec=0 codex_errf artifacts_dir
+  artifacts_dir="$dir/.artifacts"
+  mkdir -p "$artifacts_dir"
+  # Deterministic path for reproducible runs and CI artifacts (no mktemp randomness).
+  codex_errf="$artifacts_dir/codex-research.stderr"
+  : >"$codex_errf"
   if ! BT_FEATURE="$feature" bt_codex_exec_read_only "$BT_ROOT/prompts/research.md" "$out" 2>"$codex_errf"; then
     codex_ec=$?
     bt_warn "codex exited non-zero (research): $codex_ec"
@@ -59,8 +63,6 @@ Next:
 - Capture findings here (patterns, pitfalls, test/lint commands, etc)
 EOF
   fi
-
-  rm -f "$codex_errf" || true
 
   bt_progress_append "$feature" "research: bt research $feature (codex_exit=$codex_ec)"
   bt_history_write "$feature" "research" "$(cat <<EOF

@@ -30,9 +30,12 @@ jobs:
             npm install
           fi
 
+      - name: Shellcheck
+        run: |
+          BT_LINT_STRICT=1 bash scripts/lint-shell.sh
+
       - name: Test
         run: npm test
 
       - name: Lint
         run: npm run lint
-

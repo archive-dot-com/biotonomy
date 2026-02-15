@@ -85,14 +85,16 @@ EOF
     local -a gh_cmd
     gh_cmd=(gh issue view "$issue" -R "$repo" --json "title,body,url")
 
-    local json
-    local errf
-    errf="$(mktemp "${TMPDIR:-/tmp}/bt-gh-err.XXXXXX")"
+    local json errf artifacts_dir
+    artifacts_dir="$dir/.artifacts"
+    mkdir -p "$artifacts_dir"
+    # Deterministic stderr capture for reproducible runs (avoid mktemp randomness).
+    errf="$artifacts_dir/gh.stderr"
+    : >"$errf"
     if ! json="$("${gh_cmd[@]}" 2>"$errf")"; then
       local ec=$?
       local err
       err="$(cat "$errf" 2>/dev/null || true)"
-      rm -f "$errf" || true
       bt_die "failed to fetch issue #$issue via gh (exit $ec): $err"
     fi
     rm -f "$errf" || true

@@ -22,7 +22,12 @@ git init
 
 bt bootstrap
 bt spec demo-feature
+bt implement demo-feature   # runs gates (if any) + records history
+bt review demo-feature      # writes specs/demo-feature/REVIEW.md (stub if Codex is missing)
 bt status
+
+ls -R specs/demo-feature
+sed -n '1,80p' specs/demo-feature/REVIEW.md
 ```
 
 ## Install
@@ -58,7 +63,7 @@ Notes:
 - Configuration is project-local in `.bt.env` (loaded automatically by searching upward from your cwd).
 - State is file-based under `specs/<feature>/`.
 - Notifications are hook-based via `BT_NOTIFY_HOOK`.
-- If `codex` is installed, some commands will invoke it; otherwise they degrade to stubs.
+- If `codex` is installed, some commands will invoke it; otherwise they degrade to stubs (except `bt research`, which requires Codex).
 
 ## Architecture
 
