@@ -142,15 +142,51 @@ bt gates my-change
   - `BT_GATE_TYPECHECK=...`
   - `BT_GATE_TEST=...`
 
-Contributing and npm publish auth (token/2FA):
+## Release Publish Steps
+
+Use this when preparing an npm release. This workflow validates readiness but does not publish automatically.
+
+1. Confirm clean main branch and pull latest changes.
+
+```bash
+git checkout main
+git pull --ff-only
+```
+
+2. Run release preflight checks (tests, lint, pack verification, and `npm pack --dry-run` summary).
+
+```bash
+npm run release:ready
+```
+
+3. Ensure npm authentication is ready for publish.
 
 ```bash
 npm whoami
+# if needed:
 npm login
-npm publish --dry-run
 ```
 
-- If your npm account uses 2FA for publish, npm will require a one-time code during publish.
+4. Bump version and create a tag.
+
+```bash
+npm version patch
+# or: npm version minor / npm version major
+```
+
+5. Push commit and tag.
+
+```bash
+git push --follow-tags
+```
+
+6. Publish manually.
+
+```bash
+npm publish --access public
+```
+
+- If your npm account uses 2FA for publish, npm will require a one-time code during `npm publish`.
 
 ## Commands
 

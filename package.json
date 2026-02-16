@@ -31,7 +31,8 @@
     "demo": "bash scripts/demo-issue-3-real-loop.sh",
     "pr:open": "bash scripts/gh-pr.sh",
     "verify:pack": "node scripts/verify-pack.mjs",
-    "prepublishOnly": "npm test && npm run lint && npm run verify:pack"
+    "release:ready": "node scripts/release-readiness.mjs",
+    "prepublishOnly": "npm run release:ready"
   },
   "engines": {
     "node": ">=18"
