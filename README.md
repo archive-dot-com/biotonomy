@@ -1,180 +1,171 @@
 # Biotonomy
 
-Biotonomy is a CLI that runs Codex loops (research→implement→review→fix) inside your repo.
-It enforces quality gates (lint/typecheck/test) between stages and records everything as files.
-PR automation is now first-class (`bt pr` / `bt ship`) and keeps deterministic artifacts for every run.
+Biotonomy is a command-line workflow for shipping code changes with Codex.
 
-Biotonomy is intentionally file-based:
-- project config lives in `.bt.env`
-- ephemeral state lives in `.bt/`
-- feature state lives in `specs/<feature>/`
+- What it is: A CLI that runs a repeatable flow: `spec -> research -> implement -> review -> fix -> pr`.
+- Who it is for: Developers who want a structured way to ship small changes fast.
+- What problem it solves: Keeps work organized in files, runs quality checks, and reduces "what do I do next?" during AI-assisted coding.
 
-## The Codex Loop
+## 60-Second Quickstart
 
-For a feature folder `specs/<feature>/`, the loop is:
-
-1. `bt spec <feature>`: create `SPEC.md` (or `bt spec <issue#>` to pull from GitHub via `gh`)
-2. `bt research <feature>`: Codex writes `RESEARCH.md` (Codex required)
-3. `bt implement <feature>`: Codex applies code changes + Biotonomy runs quality gates
-4. `bt review <feature>`: Codex reviews into `REVIEW.md` (writes a stub if Codex is missing)
-5. `bt fix <feature>`: Codex applies targeted fixes + Biotonomy runs quality gates
-
-Supporting commands:
-- `bt status`: summarize story status from `SPEC.md` plus latest `gates.json` (if present)
-- `bt gates [<feature>]`: run gates and write `gates.json` (feature-local or global)
-- `bt reset`: delete `.bt/` and `specs/**/.lock` (does not modify your git working tree)
-
-## Ship Archie (Walkthrough)
-
-This is the intended "ship a feature" path. Some steps are still manual; each TODO points at the tracking issue.
+Install either way:
 
 ```bash
-# 0) Install
-npm install -g biotonomy
+npm i -g biotonomy
+# then use: bt ...
+```
 
-# 1) Initialize the repo for Biotonomy (creates .bt.env, specs/, .bt/)
+```bash
+npx biotonomy ...
+```
+
+Minimal demo in a fresh repo:
+
+```bash
+mkdir biotonomy-demo && cd biotonomy-demo
+git init
+npm init -y
+
+npx biotonomy bootstrap
+npx biotonomy spec hello-world
+npx biotonomy review hello-world
+npx biotonomy status
+```
+
+Expected files after the demo:
+
+- `.bt.env`
+- `.bt/`
+- `specs/hello-world/SPEC.md`
+- `specs/hello-world/REVIEW.md`
+- `specs/hello-world/progress.txt`
+- `specs/hello-world/history/001-spec.md`
+- `specs/hello-world/history/002-review.md`
+- `specs/hello-world/.artifacts/codex-review.log`
+
+Notes:
+
+- `review` still creates `REVIEW.md` even if Codex is not installed.
+- `research` requires Codex.
+
+## Ship A Small Change
+
+Use this for a real change from idea to PR.
+
+1. `spec` (define the change)
+
+```bash
+bt spec my-change
+# or from GitHub issue:
+# bt spec 123
+```
+
+- Automated today: creates `specs/<feature>/SPEC.md`, history, and progress logs.
+- Manual today: fill in/clean up stories and acceptance criteria in `SPEC.md`.
+
+2. `research` (gather context)
+
+```bash
+bt research my-change
+```
+
+- Automated today: runs Codex in read-only mode and writes `RESEARCH.md`.
+- Manual today: confirm research quality and adjust plan if needed.
+
+3. `implement` (make the change)
+
+```bash
+bt implement my-change
+```
+
+- Automated today: runs Codex in full-auto and then runs quality gates.
+- Manual today: if Codex is unavailable, this stage is a stub and you implement changes yourself.
+
+4. `review` (check what changed)
+
+```bash
+bt review my-change
+```
+
+- Automated today: writes `REVIEW.md` (with a fallback stub if Codex fails).
+- Manual today: decide whether findings are acceptable for your team.
+
+5. `fix` (address findings)
+
+```bash
+bt fix my-change
+```
+
+- Automated today: runs Codex fix pass and re-runs quality gates.
+- Manual today: rerun until you are satisfied; no built-in auto-loop to "done" yet.
+
+6. `pr` (open pull request)
+
+```bash
+bt pr my-change --dry-run
+bt pr my-change --run
+```
+
+- Automated today: runs tests/lint, creates branch, optionally commits, pushes, opens PR via `gh`.
+- Manual today: choose reviewers/labels, final PR polish, and merge strategy.
+
+## Current Limitations
+
+- No one-command autonomous loop yet (you run each stage yourself).
+- `research` needs Codex installed and available.
+- `implement`/`fix` can run as stubs without Codex (gates still run, code may not change).
+- PR flow depends on `gh` and repository permissions.
+
+## Troubleshooting
+
+`gh` auth fails (`bt spec 123` or `bt pr ...`):
+
+```bash
+gh auth status
+gh auth login
+```
+
+Codex missing (`codex required` or `codex not found`):
+
+- Install Codex and make sure `codex` is on your `PATH`.
+- Or set a custom binary in `.bt.env`: `BT_CODEX_BIN=/path/to/codex`.
+
+Quality gate failures on `implement`/`fix`:
+
+```bash
+bt gates my-change
+```
+
+- Fix failing lint/typecheck/test commands.
+- Override gate commands in `.bt.env` if auto-detection is wrong:
+  - `BT_GATE_LINT=...`
+  - `BT_GATE_TYPECHECK=...`
+  - `BT_GATE_TEST=...`
+
+Contributing and npm publish auth (token/2FA):
+
+```bash
+npm whoami
+npm login
+npm publish --dry-run
+```
+
+- If your npm account uses 2FA for publish, npm will require a one-time code during publish.
+
+## Commands
+
+```bash
 bt bootstrap
-
-# 2) Create a spec (local feature name)
-bt spec archie
-
-# (Optional) If "Archie" is a GitHub issue:
-# bt spec 123   # pulls issue title/body via `gh` into specs/issue-123/SPEC.md
-
-# 3) Research (requires Codex; see Issue #3 for the end-to-end loop/demo harness)
-bt research archie
-
-# 4) Implement (runs gates; if Codex is unavailable this records history and still runs gates)
-bt implement archie
-
-# 5) Review (writes specs/archie/REVIEW.md; stub output if Codex is unavailable)
-bt review archie
-
-# 6) Fix until review is clean (gates are re-run)
-bt fix archie
-
-# 7) Check progress at any time
+bt spec <feature|issue#>
+bt research <feature>
+bt implement <feature>
+bt review <feature>
+bt fix <feature>
+bt gates [feature]
 bt status
+bt pr <feature> [--dry-run|--run]
+bt reset
 ```
-
-Tracked work (open issues):
-- Core loop expansion (`bt loop` style driver and polish): [Issue #10](https://github.com/archive-dot-com/biotonomy/issues/10), [Issue #3](https://github.com/archive-dot-com/biotonomy/issues/3)
-- Release readiness and publish workflow (`npm i -g biotonomy`): [Issue #7](https://github.com/archive-dot-com/biotonomy/issues/7)
-- Docs refresh for Archie walkthrough and current commands: [Issue #8](https://github.com/archive-dot-com/biotonomy/issues/8), [Issue #1](https://github.com/archive-dot-com/biotonomy/issues/1)
-- Reliability hardening and bugfixes: [Issues #13-#17](https://github.com/archive-dot-com/biotonomy/issues)
-
-## Artifacts And Layout
-
-Biotonomy is minimal bash plus prompt templates:
-- `bt.sh`: CLI entrypoint and router
-- `commands/*.sh`: command implementations
-- `lib/*.sh`: shared helpers (env loading, state paths, notifications, gates, Codex exec)
-- `prompts/*.md`: prompt templates for Codex stages
-- `hooks/*`: example notification hooks
-
-On disk, expect:
-- `.bt.env`: project config (parsed as `KEY=VALUE` without `source` / without executing code)
-- `.bt/`: ephemeral state (locks/caches; safe to delete via `bt reset`)
-- `specs/<feature>/SPEC.md`: plan and story statuses (parseable; created by `bt spec`)
-- `specs/<feature>/RESEARCH.md`: research notes (`bt research`)
-- `specs/<feature>/REVIEW.md`: review verdict + findings (`bt review`)
-- `specs/<feature>/gates.json`: latest gate results when running `bt gates <feature>`
-- `specs/<feature>/progress.txt`: timestamped progress log
-- `specs/<feature>/history/*.md`: append-only run history for each stage
-- `specs/<feature>/.artifacts/*`: captured stderr from Codex/gh for debugging/repro
-
-## Quality Gates
-
-Stages that run gates:
-- `bt implement <feature>`
-- `bt fix <feature>`
-- `bt gates [<feature>]`
-
-Gate configuration:
-- Override per-project in `.bt.env` via `BT_GATE_LINT`, `BT_GATE_TYPECHECK`, `BT_GATE_TEST`
-- If unset, Biotonomy tries simple auto-detection (npm/yarn/pnpm/Makefile)
-
-## PR Automation (Opt-In Today)
-
-There is currently a safe helper script (defaults to `--dry-run`) that uses `git` and `gh`:
-
-```bash
-npm run pr:open -- archie --dry-run
-npm run pr:open -- archie --run
-```
-
-It determines the branch from `specs/<feature>/SPEC.md` frontmatter (`branch:`) when present, otherwise uses `feat/<feature>`.
-The planned end state is a first-class `bt pr ...` flow. Tracked in [Issue #8](https://github.com/archive-dot-com/biotonomy/issues/8).
-
-## Demos
-
-### Issue #3 Real Loop (End-to-End, Deterministic)
-
-This repo includes an end-to-end "real loop" runner that:
-- runs the actual `bt.sh` entrypoint
-- uses a deterministic workspace
-- stubs `gh` and `codex` so it is reproducible offline
-- writes a scrubbed transcript + snapshot under `specs/issue-3-real-loop/`
-
-```bash
-npm install
-npm run demo
-
-ls -R specs/issue-3-real-loop
-sed -n '1,120p' specs/issue-3-real-loop/transcript.txt
-sed -n '1,120p' specs/issue-3-real-loop/snapshot.txt
-```
-
-## Install
-
-Global install:
-
-```bash
-npm install -g biotonomy
-bt --help
-```
-
-Local (repo) usage:
-
-```bash
-npx biotonomy --help
-```
-
-## Targeting A Repo From Anywhere
-
-By default, `bt` uses your current working directory as the project root.
-
-To run against a different repo, use `--target <path>` (sets `BT_TARGET_DIR` for that invocation):
-
-```bash
-bt --target /path/to/repo bootstrap
-bt --target /path/to/repo status
-bt --target /path/to/repo spec archie
-```
-
-You can also set `BT_TARGET_DIR` in the environment (same behavior):
-
-```bash
-BT_TARGET_DIR=/path/to/repo bt status
-```
-
-## Status (v0.1.0)
-
-Implemented today:
-- File-based loop artifacts: `.bt.env`, `.bt/`, `specs/<feature>/...`
-- `bt bootstrap`, `bt spec <feature>`, `bt status`, `bt gates`, `bt reset`
-- `bt review` produces `REVIEW.md` even without Codex (stub output + required `Verdict:` line)
-- `bt implement` and `bt fix` always run quality gates and record history; if Codex is missing they behave as stubs (no code changes)
-- `bt research` requires Codex (it dies early if `codex` is not available)
-- Opt-in PR helper (`npm run pr:open`) with `--dry-run` by default
-
-In progress (tracked in open issues):
-- [Issue #10](https://github.com/archive-dot-com/biotonomy/issues/10): add a first-class loop driver (implement→review→fix until APPROVE + gates pass)
-- [Issue #3](https://github.com/archive-dot-com/biotonomy/issues/3): complete Codex-native loop ergonomics
-- [Issue #7](https://github.com/archive-dot-com/biotonomy/issues/7): publish workflow + npm readiness
-- [Issue #8](https://github.com/archive-dot-com/biotonomy/issues/8): docs rewrite around Codex loop + Archie walkthrough
-- [Issue #12](https://github.com/archive-dot-com/biotonomy/issues/12): close stale “already done” tracker issues
-- [Issues #13-#17](https://github.com/archive-dot-com/biotonomy/issues): active bugfix queue
 
 ## Development
 
@@ -182,5 +173,3 @@ In progress (tracked in open issues):
 npm test
 npm run lint
 ```
-
-Lint uses `shellcheck` if it is installed; otherwise it skips with a warning (CI installs shellcheck and runs strict).
