@@ -361,6 +361,115 @@ test("notify hook is invoked when BT_NOTIFY_HOOK is set", () => {
   assert.match(content, /bt bootstrap complete/i);
 });
 
+test("pr (dry-run): prints expanded gh argv and resolved base branch (stubs git/npm)", () => {
+  const cwd = mkTmp();
+
+  const bin = path.join(cwd, "bin");
+  const npmLog = path.join(cwd, "npm.args");
+  const gitLog = path.join(cwd, "git.args");
+  const npm = path.join(bin, "npm");
+  const git = path.join(bin, "git");
+
+  writeExe(
+    npm,
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$@" >> ${JSON.stringify(npmLog)}
+exit 0
+`
+  );
+
+  writeExe(
+    git,
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$@" >> ${JSON.stringify(gitLog)}
+case "$1" in
+  show-ref)
+    # Pretend branch does not exist so bt creates it.
+    exit 1
+    ;;
+  symbolic-ref)
+    # bt expects refs/remotes/<remote>/<branch>.
+    printf '%s\\n' "refs/remotes/origin/main"
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+`
+  );
+
+  const res = runBt(["pr", "feat-pr"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stderr);
+
+  // Key: argv expansion should be real (no literal ${...}), and base should resolve to "main".
+  assert.match(res.stdout + res.stderr, /\[dry-run\] gh pr create --head feat\/feat-pr --base main/);
+  assert.doesNotMatch(res.stdout + res.stderr, /\$\{pr_args/);
+  assert.doesNotMatch(res.stdout + res.stderr, /\$\{ref##/);
+});
+
+test("pr (--run): calls gh with correct argv (no empty args) and resolved base (stubs git/npm/gh)", () => {
+  const cwd = mkTmp();
+
+  const bin = path.join(cwd, "bin");
+  const ghLog = path.join(cwd, "gh.args");
+  const npm = path.join(bin, "npm");
+  const git = path.join(bin, "git");
+  const gh = path.join(bin, "gh");
+
+  writeExe(
+    npm,
+    `#!/usr/bin/env bash
+set -euo pipefail
+exit 0
+`
+  );
+
+  writeExe(
+    git,
+    `#!/usr/bin/env bash
+set -euo pipefail
+case "$1" in
+  show-ref)
+    exit 1
+    ;;
+  symbolic-ref)
+    printf '%s\\n' "refs/remotes/origin/main"
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+`
+  );
+
+  writeExe(
+    gh,
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$@" >> ${JSON.stringify(ghLog)}
+exit 0
+`
+  );
+
+  const res = runBt(["pr", "feat-pr2", "--run"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stderr);
+
+  const args = fs.readFileSync(ghLog, "utf8");
+  // Ensure gh gets command+subcommand and no empty-string argument (which would write a blank line).
+  assert.match(args, /^pr\ncreate\n--head\nfeat\/feat-pr2\n--base\nmain\n--title\nfeat: feat-pr2\n--body\nFeature: feat-pr2\n/m);
+  assert.doesNotMatch(args, /(^|\n)\n/);
+});
+
 test("gates behavior: writes global or feature gates.json with detailed JSON", () => {
   const cwd = mkTmp();
   writeFile(

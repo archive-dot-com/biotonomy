@@ -128,7 +128,8 @@ bt_cmd_pr() {
     local ref
     ref="$(git symbolic-ref -q "refs/remotes/$remote/HEAD" 2>/dev/null || true)"
     if [[ -n "$ref" ]]; then
-      base="\${ref##*/}"
+      # refs/remotes/<remote>/<branch> -> <branch>
+      base="${ref##*/}"
     else
       base="main"
     fi
@@ -144,9 +145,9 @@ bt_cmd_pr() {
   [[ "$draft" == "1" ]] && pr_args+=(--draft)
 
   if [[ "$run_mode" == "run" ]]; then
-    gh "\${pr_args[@]}"
+    gh "${pr_args[@]}"
   else
-    bt_info "[dry-run] gh \${pr_args[*]}"
+    bt_info "[dry-run] gh ${pr_args[*]}"
   fi
 
   bt_info "ship complete for $feature"
