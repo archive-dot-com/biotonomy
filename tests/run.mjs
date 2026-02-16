@@ -1627,6 +1627,90 @@ exit 0
   assert.equal(progress.iterations[1].fixStatus, "SKIP");
 });
 
+test("issue #32: loop resumes from next iteration when prior progress is implement-failed", () => {
+  const cwd = mkTmp();
+  const spec = runBt(["spec", "feat-loop-resume-32"], { cwd });
+  assert.equal(spec.code, 0, spec.stderr);
+
+  const featDir = path.join(cwd, "specs", "feat-loop-resume-32");
+  writeFile(path.join(featDir, "PLAN_REVIEW.md"), "Verdict: APPROVED_PLAN\n");
+
+  const historyDir = path.join(featDir, "history");
+  fs.mkdirSync(historyDir, { recursive: true });
+  writeFile(path.join(historyDir, "2026-02-16T000000+0000-loop-iter-001.md"), "Verdict: NEEDS_CHANGES\n");
+
+  const progressPath = path.join(featDir, "loop-progress.json");
+  writeFile(
+    progressPath,
+    JSON.stringify(
+      {
+        feature: "feat-loop-resume-32",
+        maxIterations: 3,
+        completedIterations: 1,
+        result: "implement-failed",
+        iterations: [
+          {
+            iteration: 1,
+            implementStatus: "FAIL",
+            reviewStatus: "SKIP",
+            fixStatus: "SKIP",
+            verdict: "",
+            gates: "FAIL",
+            historyFile: "",
+          },
+        ],
+      },
+      null,
+      2
+    )
+  );
+
+  const events = path.join(cwd, "resume-32.events");
+  const bin = path.join(cwd, "bin");
+  const codex = path.join(bin, "codex");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+logf="\${BT_CODEX_LOG_FILE:-}"
+kind="$(basename "$logf" .log | sed 's/^codex-//')"
+printf '%s\\n' "$kind" >> ${JSON.stringify(events)}
+out=""
+args=("$@")
+for ((i=0; i<\${#args[@]}; i++)); do
+  if [[ "\${args[i]}" == "-o" ]]; then
+    out="\${args[i+1]}"
+  fi
+done
+if [[ -n "$out" ]]; then
+  printf 'Verdict: APPROVED\\n' > "$out"
+fi
+`
+  );
+
+  const res = runBt(["loop", "feat-loop-resume-32", "--max-iterations", "3"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stdout + res.stderr);
+
+  const progress = JSON.parse(fs.readFileSync(progressPath, "utf8"));
+  assert.equal(progress.completedIterations, 2);
+  assert.equal(progress.result, "success");
+  assert.equal(progress.iterations.length, 2);
+  assert.equal(progress.iterations[0].iteration, 1);
+  assert.equal(progress.iterations[0].implementStatus, "FAIL");
+  assert.equal(progress.iterations[1].iteration, 2);
+  assert.equal(progress.iterations[1].verdict, "APPROVED");
+
+  const historyFiles = fs.readdirSync(historyDir);
+  assert.ok(historyFiles.some((f) => f.endsWith("-loop-iter-001.md")), "missing existing loop iter 1 history");
+  assert.ok(historyFiles.some((f) => f.endsWith("-loop-iter-002.md")), "missing resumed loop iter 2 history");
+
+  const callOrder = fs.readFileSync(events, "utf8").trim().split("\n").filter(Boolean);
+  assert.deepEqual(callOrder, ["implement", "review"], `unexpected calls after resume: ${callOrder.join(" -> ")}`);
+});
+
 test("loop (non-auto): implement/fix return non-zero when gates fail", () => {
     const cwd = mkTmp();
     runBt(["spec", "feat-loop-gate-fail"], { cwd });

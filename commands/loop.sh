@@ -104,10 +104,53 @@ bt_cmd_loop() {
   review_file="$feat_dir/REVIEW.md"
   local history_dir="$feat_dir/history"
   local progress_file="$feat_dir/loop-progress.json"
+  local resume_iter=0
+  local should_resume=0
 
-  # Initialize progress
   mkdir -p "$history_dir"
-  cat > "$progress_file" <<EOF
+  if [[ -f "$progress_file" ]]; then
+    local resume_meta
+    resume_meta="$(python3 - <<PY
+import json
+p = "$progress_file"
+max_iter = $max_iter
+try:
+    with open(p, "r", encoding="utf-8") as f:
+        d = json.load(f)
+except Exception:
+    print("0 0")
+    raise SystemExit(0)
+result = str(d.get("result", ""))
+completed = d.get("completedIterations", 0)
+try:
+    completed = int(completed)
+except Exception:
+    completed = 0
+if result in {"in-progress", "implement-failed"} and completed < max_iter:
+    d["feature"] = "$feature"
+    d["maxIterations"] = max_iter
+    d["completedIterations"] = completed
+    d["result"] = "in-progress"
+    if not isinstance(d.get("iterations"), list):
+        d["iterations"] = []
+    with open(p, "w", encoding="utf-8") as f:
+        json.dump(d, f, indent=2)
+    print(f"1 {completed}")
+else:
+    print("0 0")
+PY
+)"
+    if [[ "$resume_meta" =~ ^1[[:space:]]+([0-9]+)$ ]]; then
+      should_resume=1
+      resume_iter="${BASH_REMATCH[1]}"
+    fi
+  fi
+
+  if [[ "$should_resume" == "1" ]]; then
+    iter="$resume_iter"
+    bt_info "resuming loop from iteration $((iter + 1)) / $max_iter"
+  else
+    cat > "$progress_file" <<EOF
 {
   "feature": "$feature",
   "maxIterations": $max_iter,
@@ -116,6 +159,7 @@ bt_cmd_loop() {
   "iterations": []
 }
 EOF
+  fi
 
   # Ensure subcommands return non-zero instead of exiting the entire loop process.
   export BT_DIE_MODE="return"
