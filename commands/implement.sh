@@ -25,6 +25,18 @@ EOF
   dir="$(bt_feature_dir "$feature")"
   [[ -d "$dir" ]] || bt_die "missing feature dir: $dir (run: bt spec ...)"
 
+  local plan_review="$dir/PLAN_REVIEW.md"
+  if [[ ! -f "$plan_review" ]]; then
+    bt_err "missing $plan_review"
+    bt_err "run: bt plan-review $feature"
+    bt_die "implement hard-fails without approved PLAN_REVIEW verdict"
+  fi
+
+  if ! grep -qiE "Verdict:.*(APPROVE_PLAN|APPROVED_PLAN)" "$plan_review"; then
+    bt_err "PLAN_REVIEW.md exists but is not approved."
+    bt_die "implement hard-fails without approved PLAN_REVIEW verdict"
+  fi
+
   bt_progress_append "$feature" "implement: bt implement $feature (starting)"
 
   local codex_ec=0

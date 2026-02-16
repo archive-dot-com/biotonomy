@@ -213,6 +213,11 @@ test("BT_TARGET_DIR: spec writes SPEC.md under target", () => {
 
 test("implement fails when a configured gate fails", () => {
     const cwd = mkTmp();
+
+    runBt(["spec", "feat-x"], { cwd });
+    const featDir = path.join(cwd, "specs", "feat-x");
+    fs.writeFileSync(path.join(featDir, "PLAN_REVIEW.md"), "Verdict: APPROVED_PLAN\n");
+
     const bin = path.join(cwd, "bin");
     const codex = path.join(bin, "codex");
     writeExe(codex, `#!/usr/bin/env bash\nexit 0\n`);
@@ -319,10 +324,67 @@ exit 0
   assert.match(content, /^Verdict: APPROVED/im);
 });
 
+test("plan-review writes PLAN_REVIEW.md with plan verdict (stubs codex via PATH)", () => {
+  const cwd = mkTmp();
+
+  const spec = runBt(["spec", "feat-plan-v"], { cwd });
+  assert.equal(spec.code, 0, spec.stderr);
+
+  const bin = path.join(cwd, "bin");
+  const codex = path.join(bin, "codex");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+# In runBt, BT_PROJECT_ROOT is set to cwd
+out="specs/\${BT_FEATURE}/PLAN_REVIEW.md"
+mkdir -p "\$(dirname "\$out")"
+printf '%s\\n' "# Plan Review from stub" "Verdict: APPROVED_PLAN" > "\$out"
+exit 0
+`
+  );
+
+  const res = runBt(["plan-review", "feat-plan-v"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stdout + res.stderr);
+
+  const out = path.join(cwd, "specs", "feat-plan-v", "PLAN_REVIEW.md");
+  assert.ok(fs.existsSync(out), `PLAN_REVIEW.md missing: ${res.stdout} ${res.stderr}`);
+});
+
+test("implement hard-fails without approved PLAN_REVIEW verdict", () => {
+    const cwd = mkTmp();
+
+    runBt(["spec", "feat-plan-gate-impl"], { cwd });
+    // NO PLAN_REVIEW.md yet
+
+    const res = runBt(["implement", "feat-plan-gate-impl"], { cwd });
+    assert.equal(res.code, 1, res.stdout + res.stderr);
+    assert.match(res.stderr, /PLAN_REVIEW\.md/i);
+
+    const featDir = path.join(cwd, "specs", "feat-plan-gate-impl");
+    fs.writeFileSync(path.join(featDir, "PLAN_REVIEW.md"), "Verdict: APPROVED_PLAN\n");
+
+    const bin = path.join(cwd, "bin");
+    const codex = path.join(bin, "codex");
+    const out = path.join(featDir, "REVIEW.md");
+    writeExe(codex, `#!/usr/bin/env bash\nexit 0\n`);
+
+    const res2 = runBt(["implement", "feat-plan-gate-impl"], {
+      cwd,
+      env: { PATH: `${bin}:${process.env.PATH}` }
+    });
+    assert.equal(res2.code, 0, res2.stdout + res2.stderr);
+});
+
 test("loop (stubbed): runs implement -> review and finishes on APPROVED", () => {
     const cwd = mkTmp();
-    const spec = runBt(["spec", "feat-loop"], { cwd });
-    assert.equal(spec.code, 0);
+
+    runBt(["spec", "feat-loop"], { cwd });
+    const featDir = path.join(cwd, "specs", "feat-loop");
+    fs.writeFileSync(path.join(featDir, "PLAN_REVIEW.md"), "Verdict: APPROVED_PLAN\n");
 
     const bin = path.join(cwd, "bin");
     const codex = path.join(bin, "codex");
@@ -358,11 +420,13 @@ exit 0
 });
 
 test("loop accepts Verdict: APPROVE as successful convergence", () => {
-  const cwd = mkTmp();
-  const spec = runBt(["spec", "feat-loop-approve"], { cwd });
-  assert.equal(spec.code, 0, spec.stderr);
+    const cwd = mkTmp();
 
-  const bin = path.join(cwd, "bin");
+    runBt(["spec", "feat-loop-approve"], { cwd });
+    const featDir = path.join(cwd, "specs", "feat-loop-approve");
+    fs.writeFileSync(path.join(featDir, "PLAN_REVIEW.md"), "Verdict: APPROVED_PLAN\n");
+
+    const bin = path.join(cwd, "bin");
   const codex = path.join(bin, "codex");
   writeExe(
     codex,
@@ -406,11 +470,13 @@ test("loop validates --max-iterations as a positive integer", () => {
 });
 
 test("loop persists per-iteration history and deterministic progress artifact", () => {
-  const cwd = mkTmp();
-  const spec = runBt(["spec", "feat-loop-history"], { cwd });
-  assert.equal(spec.code, 0, spec.stderr);
+    const cwd = mkTmp();
 
-  const bin = path.join(cwd, "bin");
+    runBt(["spec", "feat-loop-history"], { cwd });
+    const featDir = path.join(cwd, "specs", "feat-loop-history");
+    fs.writeFileSync(path.join(featDir, "PLAN_REVIEW.md"), "Verdict: APPROVED_PLAN\n");
+
+    const bin = path.join(cwd, "bin");
   const codex = path.join(bin, "codex");
   const reviewCount = path.join(cwd, "review.count");
   writeExe(
@@ -464,11 +530,13 @@ exit 0
 });
 
 test("loop runs implement before each review iteration; fix only after NEEDS_CHANGES verdict", () => {
-  const cwd = mkTmp();
-  const spec = runBt(["spec", "feat-loop-order"], { cwd });
-  assert.equal(spec.code, 0, spec.stderr);
+    const cwd = mkTmp();
 
-  const bin = path.join(cwd, "bin");
+    runBt(["spec", "feat-loop-order"], { cwd });
+    const featDir = path.join(cwd, "specs", "feat-loop-order");
+    fs.writeFileSync(path.join(featDir, "PLAN_REVIEW.md"), "Verdict: APPROVED_PLAN\n");
+
+    const bin = path.join(cwd, "bin");
   const codex = path.join(bin, "codex");
   const reviewCount = path.join(cwd, "review-order.count");
   const events = path.join(cwd, "loop-order.events");
@@ -520,11 +588,13 @@ exit 0
 });
 
 test("loop fails loud when implement fails and does not run review", () => {
-  const cwd = mkTmp();
-  const spec = runBt(["spec", "feat-loop-impl-fail"], { cwd });
-  assert.equal(spec.code, 0, spec.stderr);
+    const cwd = mkTmp();
 
-  const bin = path.join(cwd, "bin");
+    runBt(["spec", "feat-loop-impl-fail"], { cwd });
+    const featDir = path.join(cwd, "specs", "feat-loop-impl-fail");
+    fs.writeFileSync(path.join(featDir, "PLAN_REVIEW.md"), "Verdict: APPROVED_PLAN\n");
+
+    const bin = path.join(cwd, "bin");
   const codex = path.join(bin, "codex");
   const events = path.join(cwd, "loop-impl-fail.events");
   writeExe(
@@ -565,12 +635,50 @@ exit 0
   assert.deepEqual(calls, ["implement"], `unexpected calls after implement failure: ${calls.join(" -> ")}`);
 });
 
-test("loop exits non-zero on max iterations and persists failure progress", () => {
+test("loop hard-fails without approved PLAN_REVIEW verdict before implement/review", () => {
   const cwd = mkTmp();
-  const spec = runBt(["spec", "feat-loop-max-fail"], { cwd });
+  const spec = runBt(["spec", "feat-plan-gate-loop"], { cwd });
   assert.equal(spec.code, 0, spec.stderr);
 
+  const events = path.join(cwd, "plan-gate-loop.events");
   const bin = path.join(cwd, "bin");
+  const codex = path.join(bin, "codex");
+  const npm = path.join(bin, "npm");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "codex:$*" >> ${JSON.stringify(events)}
+exit 0
+`
+  );
+  writeExe(
+    npm,
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "npm:$*" >> ${JSON.stringify(events)}
+exit 0
+`
+  );
+
+  const res = runBt(["loop", "feat-plan-gate-loop"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 1, res.stdout + res.stderr);
+  assert.match(res.stderr, /PLAN_REVIEW\.md/i);
+  assert.match(res.stderr, /bt plan-review feat-plan-gate-loop/i);
+  assert.ok(!fs.existsSync(events), "loop should fail before npm/codex are invoked");
+});
+
+test("loop exits non-zero on max iterations and persists failure progress", () => {
+    const cwd = mkTmp();
+
+    runBt(["spec", "feat-loop-max-fail"], { cwd });
+    const featDir = path.join(cwd, "specs", "feat-loop-max-fail");
+    fs.writeFileSync(path.join(featDir, "PLAN_REVIEW.md"), "Verdict: APPROVED_PLAN\n");
+
+    const bin = path.join(cwd, "bin");
   const codex = path.join(bin, "codex");
   writeExe(
     codex,
@@ -612,12 +720,14 @@ exit 0
 });
 
 test("loop runs preflight gates before first implement iteration (stub npm + codex call-order log)", () => {
-  const cwd = mkTmp();
-  const spec = runBt(["spec", "feat-loop-preflight"], { cwd });
-  assert.equal(spec.code, 0, spec.stderr);
+    const cwd = mkTmp();
 
-  const events = path.join(cwd, "call-order.log");
-  const bin = path.join(cwd, "bin");
+    runBt(["spec", "feat-loop-preflight"], { cwd });
+    const featDir = path.join(cwd, "specs", "feat-loop-preflight");
+    fs.writeFileSync(path.join(featDir, "PLAN_REVIEW.md"), "Verdict: APPROVED_PLAN\n");
+
+    const events = path.join(cwd, "call-order.log");
+    const bin = path.join(cwd, "bin");
   const npm = path.join(bin, "npm");
   writeExe(
     npm,
@@ -724,6 +834,7 @@ test("command routing: each command --help exits 0", () => {
     "bootstrap",
     "spec",
     "research",
+    "plan-review",
     "implement",
     "review",
     "fix",

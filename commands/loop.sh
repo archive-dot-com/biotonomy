@@ -68,6 +68,15 @@ bt_cmd_loop() {
   fi
   bt_info "preflight gates: PASS"
 
+  local feat_dir
+  feat_dir="$(bt_feature_dir "$feature")"
+  local plan_review="$feat_dir/PLAN_REVIEW.md"
+  if [[ ! -f "$plan_review" ]] || ! grep -qiE "Verdict:.*(APPROVE_PLAN|APPROVED_PLAN)" "$plan_review"; then
+    bt_err "missing or unapproved $plan_review"
+    bt_err "run: bt plan-review $feature"
+    bt_die "loop hard-fails without approved PLAN_REVIEW verdict before implement/review"
+  fi
+
   # Source required commands so we can call them directly
   # shellcheck source=/dev/null
   source "$BT_ROOT/commands/implement.sh"

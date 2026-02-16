@@ -99,7 +99,7 @@ bt_dispatch() {
   bt_env_load || true
 
   case "$cmd" in
-    bootstrap|spec|research|implement|review|fix|loop|compound|design|status|gates|reset|pr|ship) ;;
+    bootstrap|spec|research|plan-review|implement|review|fix|loop|compound|design|status|gates|reset|pr|ship) ;;
     *)
       bt_err "unknown command: $cmd"
       bt_usage >&2
@@ -119,10 +119,14 @@ bt_dispatch() {
   # shellcheck source=/dev/null
   source "$cmd_file"
 
-  local fn="bt_cmd_$cmd"
+  local safe_cmd="${cmd//-/_}"
+  local fn="bt_cmd_$safe_cmd"
   if [[ "$cmd" == "ship" ]]; then
     fn="bt_cmd_pr"
   fi
+
+  # Log for debugging
+  # bt_info "dispatching to $fn"
 
   if ! declare -F "$fn" >/dev/null 2>&1; then
     bt_die "command function not found: $fn (in $cmd_file)"
