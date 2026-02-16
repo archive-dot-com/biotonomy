@@ -36,8 +36,9 @@ EOF
     codex_logf="$artifacts_dir/codex-fix.log"
     : >"$codex_logf"
     if ! BT_FEATURE="$feature" BT_CODEX_LOG_FILE="$codex_logf" bt_codex_exec_full_auto "$BT_ROOT/prompts/fix.md"; then
-      codex_ec=$?
-      bt_warn "codex exited non-zero (fix): $codex_ec"
+      local ec=$?
+      bt_warn "codex exited non-zero (fix): $ec"
+      bt_die "codex failed (fix), stopping."
     fi
   else
     codex_ec=127

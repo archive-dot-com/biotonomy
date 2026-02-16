@@ -162,23 +162,30 @@ test("BT_TARGET_DIR: spec writes SPEC.md under target", () => {
 });
 
 test("implement fails when a configured gate fails", () => {
-  const cwd = mkTmp();
-  writeFile(
-    path.join(cwd, ".bt.env"),
-    [
-      "BT_SPECS_DIR=specs",
-      "BT_STATE_DIR=.bt",
-      "BT_GATE_TEST=false",
-      "",
-    ].join("\n")
-  );
+    const cwd = mkTmp();
+    const bin = path.join(cwd, "bin");
+    const codex = path.join(bin, "codex");
+    writeExe(codex, `#!/usr/bin/env bash\nexit 0\n`);
 
-  const spec = runBt(["spec", "feat-x"], { cwd });
-  assert.equal(spec.code, 0, spec.stderr);
+    writeFile(
+        path.join(cwd, ".bt.env"),
+        [
+            "BT_SPECS_DIR=specs",
+            "BT_STATE_DIR=.bt",
+            "BT_GATE_TEST=false",
+            "",
+        ].join("\n")
+    );
 
-  const impl = runBt(["implement", "feat-x"], { cwd });
-  assert.equal(impl.code, 1);
-  assert.match(impl.stderr, /gate failed: test/i);
+    const spec = runBt(["spec", "feat-x"], { cwd });
+    assert.equal(spec.code, 0, spec.stderr);
+
+    const impl = runBt(["implement", "feat-x"], {
+        cwd,
+        env: { PATH: `${bin}:${process.env.PATH}` }
+    });
+    assert.equal(impl.code, 1);
+    assert.match(impl.stderr, /gate failed: test/i);
 });
 
 test("research writes RESEARCH.md (stubs codex via PATH)", () => {
@@ -880,3 +887,66 @@ exit 77
   assert.ok(res.stdout.includes("### `specs/feat-artifacts/REVIEW.md`"), "REVIEW missing from artifacts");
   assert.ok(res.stdout.includes("### `specs/feat-artifacts/.artifacts/summary.txt`"), "Artifact missing");
 });
+
+test("implement fails loud when codex fails and skips gates", () => {
+    const cwd = mkTmp();
+    const bin = path.join(cwd, "bin");
+    const codex = path.join(bin, "codex");
+    const npm = path.join(bin, "npm");
+    const callLog = path.join(cwd, "calls.log");
+
+    writeExe(codex, `#!/usr/bin/env bash
+echo "codex called" >> ${JSON.stringify(callLog)}
+exit 1
+`);
+    writeExe(npm, `#!/usr/bin/env bash
+echo "npm called" >> ${JSON.stringify(callLog)}
+exit 0
+`);
+
+    writeFile(path.join(cwd, ".bt.env"), `BT_GATE_TEST=${npm} test\n`);
+    runBt(["spec", "feat-f1"], { cwd });
+
+    const res = runBt(["implement", "feat-f1"], {
+        cwd,
+        env: { PATH: `${bin}:${process.env.PATH}` }
+    });
+
+    assert.equal(res.code, 1, "implement should exit non-zero when codex fails");
+    const log = fs.readFileSync(callLog, "utf8");
+    assert.match(log, /codex called/);
+    assert.doesNotMatch(log, /npm called/, "gates should not run after codex failure");
+});
+
+test("fix fails loud when codex fails and skips gates", () => {
+    const cwd = mkTmp();
+    const bin = path.join(cwd, "bin");
+    const codex = path.join(bin, "codex");
+    const npm = path.join(bin, "npm");
+    const callLog = path.join(cwd, "calls.log");
+
+    writeExe(codex, `#!/usr/bin/env bash
+echo "codex called" >> ${JSON.stringify(callLog)}
+exit 1
+`);
+    writeExe(npm, `#!/usr/bin/env bash
+echo "npm called" >> ${JSON.stringify(callLog)}
+exit 0
+`);
+
+    writeFile(path.join(cwd, ".bt.env"), `BT_GATE_TEST=${npm} test\n`);
+    runBt(["spec", "feat-f2"], { cwd });
+
+    const res = runBt(["fix", "feat-f2"], {
+        cwd,
+        env: { PATH: `${bin}:${process.env.PATH}` }
+    });
+
+    assert.equal(res.code, 1, "fix should exit non-zero when codex fails");
+    const log = fs.readFileSync(callLog, "utf8");
+    assert.match(log, /codex called/);
+    assert.doesNotMatch(log, /npm called/, "gates should not run after codex failure");
+});
+
+if (process.exitCode) process.exit(process.exitCode);
+
