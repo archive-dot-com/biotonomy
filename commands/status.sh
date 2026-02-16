@@ -75,7 +75,7 @@ EOF
 
   bt_env_load || true
 
-  echo "bt v0.1.0"
+  echo "bt v${BT_VERSION:-unknown}"
   echo "project_root: $BT_PROJECT_ROOT"
   echo "env_file: ${BT_ENV_FILE:-<none>}"
   echo "specs_dir: $BT_SPECS_DIR"

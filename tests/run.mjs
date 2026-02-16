@@ -223,6 +223,16 @@ test("status gate parsing handles compact JSON without whitespace", () => {
   assert.match(res.stdout, /global:\s*\[gates:fail 2026-02-16T02:00:00Z \(test\)\]/);
 });
 
+test("status prints version from package metadata (not hardcoded 0.1.0)", () => {
+  const cwd = mkTmp();
+  const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
+
+  const res = runBt(["status"], { cwd });
+  assert.equal(res.code, 0, res.stderr);
+  assert.match(res.stdout, new RegExp(`\\bbt v${pkg.version}\\b`));
+  assert.doesNotMatch(res.stdout, /\bbt v0\.1\.0\b/);
+});
+
 test("BT_TARGET_DIR: spec writes SPEC.md under target", () => {
   const caller = mkTmp();
   const target = mkTmp();

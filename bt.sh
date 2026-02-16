@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BT_VERSION="0.1.0"
+bt_package_version() {
+  local pkg="$BT_ROOT/package.json"
+  if [[ -f "$pkg" ]]; then
+    awk -F '"' '/"version"[[:space:]]*:/ { print $4; exit }' "$pkg"
+    return 0
+  fi
+  return 1
+}
 
 bt_script_dir() {
   local src="${BASH_SOURCE[0]}"
@@ -15,6 +22,8 @@ bt_script_dir() {
 }
 
 BT_ROOT="$(bt_script_dir)"
+BT_VERSION="$(bt_package_version 2>/dev/null || true)"
+BT_VERSION="${BT_VERSION:-0.1.0}"
 
 # shellcheck source=/dev/null
 source "$BT_ROOT/lib/log.sh"
