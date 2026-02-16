@@ -457,6 +457,9 @@ esac
     `#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\\n' "$@" >> ${JSON.stringify(ghLog)}
+if [[ "$1" == "pr" && "$2" == "create" ]]; then
+  printf '%s\\n' "https://github.com/acme-co/biotonomy/pull/123"
+fi
 exit 0
 `
   );
@@ -470,6 +473,8 @@ exit 0
   const args = fs.readFileSync(ghLog, "utf8");
   // Ensure gh gets command+subcommand and no empty-string argument (which would write a blank line).
   assert.match(args, /^pr\ncreate\n--head\nfeat\/feat-pr2\n--base\nmain\n--title\nfeat: feat-pr2\n--body\nFeature: feat-pr2\n/m);
+  // After create, bt posts a deterministic artifacts comment using --body-file (argv-safe for multiline bodies).
+  assert.match(args, /\npr\ncomment\nhttps:\/\/github\.com\/acme-co\/biotonomy\/pull\/123\n--body-file\n[^\n]+\n/);
   assert.doesNotMatch(args, /(^|\n)\n/);
 });
 

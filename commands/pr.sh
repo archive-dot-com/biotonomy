@@ -18,6 +18,103 @@ Options:
 EOF
 }
 
+bt_pr_file_size_bytes() {
+  local f="$1"
+  local sz=""
+  # macOS/BSD stat
+  if sz="$(stat -f%z "$f" 2>/dev/null)"; then
+    printf '%s\n' "$sz"
+    return 0
+  fi
+  # GNU stat
+  if sz="$(stat -c%s "$f" 2>/dev/null)"; then
+    printf '%s\n' "$sz"
+    return 0
+  fi
+  # Fallback
+  wc -c <"$f" | tr -d ' '
+}
+
+bt_pr_is_text_file() {
+  local f="$1"
+  # grep -I treats binary as non-matching and exits 1; empty files also exit 1, so handle empties elsewhere.
+  LC_ALL=C grep -Iq . "$f" 2>/dev/null
+}
+
+bt_pr_append_artifact_section() {
+  local out_file="$1"
+  local relpath="$2"
+  local abspath="$3"
+  local max_inline_bytes="$4"
+
+  {
+    # shellcheck disable=SC2016
+    printf '\n### `%s`\n' "$relpath"
+    # shellcheck disable=SC2016
+    printf 'Path: [`%s`](%s)\n\n' "$relpath" "$relpath"
+
+    if [[ ! -f "$abspath" ]]; then
+      printf "_missing_\\n"
+      return 0
+    fi
+
+    local size
+    size="$(bt_pr_file_size_bytes "$abspath")"
+
+    if [[ "$size" -ge "$max_inline_bytes" ]]; then
+      printf "_not inlined (size: %s bytes)_\\n" "$size"
+      return 0
+    fi
+
+    if [[ "$size" -gt 0 ]] && ! bt_pr_is_text_file "$abspath"; then
+      printf "_not inlined (binary or non-text; size: %s bytes)_\\n" "$size"
+      return 0
+    fi
+
+    local fence='```'
+    if grep -q '```' "$abspath" 2>/dev/null; then
+      fence='````'
+    fi
+
+    printf "%s\\n" "$fence"
+    cat "$abspath"
+    # Ensure trailing newline so the closing fence is on its own line.
+    printf "\\n%s\\n" "$fence"
+  } >>"$out_file"
+}
+
+bt_pr_write_artifacts_comment() {
+  local feature="$1"
+  local specs_dir="$2"
+  local out_file="$3"
+
+  local max_inline_bytes=$((20 * 1024))
+  local spec_rel="$specs_dir/$feature/SPEC.md"
+  local review_rel="$specs_dir/$feature/REVIEW.md"
+  local artifacts_dir_rel="$specs_dir/$feature/.artifacts"
+
+  : >"$out_file"
+  {
+    printf "## Artifacts\\n\\n"
+    # shellcheck disable=SC2016
+    printf 'Feature: `%s`\n' "$feature"
+  } >>"$out_file"
+
+  bt_pr_append_artifact_section "$out_file" "$spec_rel" "$spec_rel" "$max_inline_bytes"
+
+  if [[ -f "$review_rel" ]]; then
+    bt_pr_append_artifact_section "$out_file" "$review_rel" "$review_rel" "$max_inline_bytes"
+  fi
+
+  if [[ -d "$artifacts_dir_rel" ]]; then
+    local f
+    while IFS= read -r f; do
+      [[ -n "$f" ]] || continue
+      bt_pr_append_artifact_section "$out_file" "$f" "$f" "$max_inline_bytes"
+    done < <(find "$artifacts_dir_rel" -type f -print | LC_ALL=C sort)
+  fi
+}
+
 bt_cmd_pr() {
   local feature=""
   local run_mode="dry-run"
@@ -145,7 +242,21 @@ bt_cmd_pr() {
   [[ "$draft" == "1" ]] && pr_args+=(--draft)
 
   if [[ "$run_mode" == "run" ]]; then
-    gh "${pr_args[@]}"
+    local pr_out
+    pr_out="$(gh "${pr_args[@]}")"
+    # gh pr create typically prints the PR URL on success.
+    local pr_url
+    pr_url="$(printf '%s\n' "$pr_out" | tail -n 1 | tr -d '\r')"
+    if [[ -n "$pr_url" ]]; then
+      bt_info "posting artifacts comment..."
+      local comment_file
+      comment_file="$(mktemp "${TMPDIR:-/tmp}/bt-pr-comment.XXXXXX")"
+      bt_pr_write_artifacts_comment "$feature" "$specs_dir" "$comment_file"
+      gh pr comment "$pr_url" --body-file "$comment_file"
+      rm -f "$comment_file"
+    else
+      bt_err "gh pr create did not return a PR URL; skipping artifacts comment"
+    fi
   else
     bt_info "[dry-run] gh ${pr_args[*]}"
   fi
