@@ -189,20 +189,19 @@ bt_cmd_pr() {
   fi
 
   # 2. Fail-loud preflight for unstaged expected files (before tests/commit flow).
-  if [[ "$commit" == "1" ]]; then
-    local unstaged=""
-    local check_paths=(tests lib commands scripts specs prompts) # Added specs and prompts
-    if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-      unstaged="$(git ls-files --others --modified --exclude-standard -- "${check_paths[@]}" 2>/dev/null || true)"
-    else
-      # Outside a git repo, treat present implementation files as unstaged by definition.
-      unstaged="$(find "${check_paths[@]}" -type f 2>/dev/null | LC_ALL=C sort || true)"
-    fi
-    if [[ -n "$unstaged" ]]; then
-      bt_err "Found unstaged files that might be required for this feature:"
-      printf '%s\n' "$unstaged" >&2
-      bt_die "Abort: ship requires all feature files to be staged. Use git add and try again."
-    fi
+  # P0 #18: fail-loud even with --no-commit
+  local unstaged=""
+  local check_paths=(tests lib commands scripts specs prompts)
+  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    unstaged="$(git ls-files --others --modified --exclude-standard -- "${check_paths[@]}" 2>/dev/null || true)"
+  else
+    # Outside a git repo, treat present implementation files as unstaged by definition.
+    unstaged="$(find "${check_paths[@]}" -type f 2>/dev/null | LC_ALL=C sort || true)"
+  fi
+  if [[ -n "$unstaged" ]]; then
+    bt_err "Found unstaged files that might be required for this feature:"
+    printf '%s\n' "$unstaged" >&2
+    bt_die "Abort: ship requires all feature files to be staged. Use git add and try again."
   fi
 
   if [[ "$run_mode" == "dry-run" ]]; then
@@ -255,14 +254,7 @@ bt_cmd_pr() {
   # 4. Commit changes if requested
   if [[ "$commit" == "1" ]]; then
     bt_info "committing changes..."
-    local unstaged
-    local check_paths=(tests lib commands scripts specs prompts)
-    unstaged="$(git status --porcelain -- "${check_paths[@]}" 2>/dev/null || true)"
-    if [[ -n "$unstaged" ]]; then
-      bt_err "Found unstaged files that might be required for this feature:"
-      printf '%s\n' "$unstaged" >&2
-      bt_die "Abort: ship requires all feature files to be staged. Use git add and try again."
-    fi
+    # (Unstaged check removed here as it is now redundant with global T0 check)
 
     if ! git diff --cached --quiet; then
       git commit -m "feat($feature): ship implementation"
