@@ -1,211 +1,110 @@
 # Biotonomy
 
-Biotonomy is a command-line workflow for shipping code changes with Codex.
+Biotonomy is a command-line tool for shipping code changes with Codex. It wraps the messy, manual steps of AI-assisted development into a structured, verifiable loop: `spec -> research -> implement -> review -> fix -> pr`.
 
-- What it is: A CLI that runs a repeatable flow: `spec -> research -> implement -> review -> fix -> pr`.
-- Who it is for: Developers who want a structured way to ship small changes fast.
-- What problem it solves: Keeps work organized in files, runs quality checks, and reduces "what do I do next?" during AI-assisted coding.
+- **Verifiable**: Every stage (spec, implementation, fix) is enforced by quality gates (tests, lint, typecheck).
+- **History-aware**: Keeps versioned history of specs, research, and reviews in your repo.
+- **Autonomous**: Can run as a fully automated driver (`bt loop`) that iterates until code passes review and gates.
+
+> **Status**: v0.2.0 is stable. It supports full manual stage progression and the new autonomous `bt loop` driver.
 
 ## 60-Second Quickstart
 
-Install either way:
+Install via npm:
 
 ```bash
 npm i -g biotonomy
 # then use: bt ...
 ```
 
+Or run directly with npx:
+
 ```bash
 npx biotonomy ...
 ```
 
-Minimal demo in a fresh repo:
+### Try the Demo
+In any git repository (or a fresh one):
 
 ```bash
-mkdir biotonomy-demo && cd biotonomy-demo
-git init
-npm init -y
-
-npx biotonomy bootstrap
-npx biotonomy spec hello-world
-npx biotonomy review hello-world
-npx biotonomy status
-```
-
-Expected files after the demo:
-
-- `.bt.env`
-- `.bt/`
-- `specs/hello-world/SPEC.md`
-- `specs/hello-world/REVIEW.md`
-- `specs/hello-world/progress.txt`
-- `specs/hello-world/history/001-spec.md`
-- `specs/hello-world/history/002-review.md`
-- `specs/hello-world/.artifacts/codex-review.log`
-
-Notes:
-
-- `review` still creates `REVIEW.md` even if Codex is not installed.
-- `research` requires Codex.
-
-## Ship A Small Change
-
-Use this for a real change from idea to PR.
-
-1. `spec` (define the change)
-
-```bash
-bt spec my-change
-# or from GitHub issue:
-# bt spec 123
-```
-
-- Automated today: creates `specs/<feature>/SPEC.md`, history, and progress logs.
-- Manual today: fill in/clean up stories and acceptance criteria in `SPEC.md`.
-
-2. `research` (gather context)
-
-```bash
-bt research my-change
-```
-
-- Automated today: runs Codex in read-only mode and writes `RESEARCH.md`.
-- Manual today: confirm research quality and adjust plan if needed.
-
-3. `implement` (make the change)
-
-```bash
-bt implement my-change
-```
-
-- Automated today: runs Codex in full-auto and then runs quality gates.
-- Manual today: if Codex is unavailable, this stage is a stub and you implement changes yourself.
-
-4. `review` (check what changed)
-
-```bash
-bt review my-change
-```
-
-- Automated today: writes `REVIEW.md` (with a fallback stub if Codex fails).
-- Manual today: decide whether findings are acceptable for your team.
-
-5. `fix` (address findings)
-
-```bash
-bt fix my-change
-```
-
-- Automated today: runs Codex fix pass and re-runs quality gates.
-- Manual today: rerun until you are satisfied; no built-in auto-loop to "done" yet.
-
-6. `pr` (open pull request)
-
-```bash
-bt pr my-change --dry-run
-bt pr my-change --run
-```
-
-- Automated today: runs tests/lint, creates branch, optionally commits, pushes, opens PR via `gh`.
-- Manual today: choose reviewers/labels, final PR polish, and merge strategy.
-
-## Current Limitations
-
-- No one-command autonomous loop yet (you run each stage yourself).
-- `research` needs Codex installed and available.
-- `implement`/`fix` can run as stubs without Codex (gates still run, code may not change).
-- PR flow depends on `gh` and repository permissions.
-
-## Troubleshooting
-
-`gh` auth fails (`bt spec 123` or `bt pr ...`):
-
-```bash
-gh auth status
-gh auth login
-```
-
-Codex missing (`codex required` or `codex not found`):
-
-- Install Codex and make sure `codex` is on your `PATH`.
-- Or set a custom binary in `.bt.env`: `BT_CODEX_BIN=/path/to/codex`.
-
-Quality gate failures on `implement`/`fix`:
-
-```bash
-bt gates my-change
-```
-
-- Fix failing lint/typecheck/test commands.
-- Override gate commands in `.bt.env` if auto-detection is wrong:
-  - `BT_GATE_LINT=...`
-  - `BT_GATE_TYPECHECK=...`
-  - `BT_GATE_TEST=...`
-
-## Release Publish Steps
-
-Use this when preparing an npm release. This workflow validates readiness but does not publish automatically.
-
-1. Confirm clean main branch and pull latest changes.
-
-```bash
-git checkout main
-git pull --ff-only
-```
-
-2. Run release preflight checks (tests, lint, pack verification, and `npm pack --dry-run` summary).
-
-```bash
-npm run release:ready
-```
-
-3. Ensure npm authentication is ready for publish.
-
-```bash
-npm whoami
-# if needed:
-npm login
-```
-
-4. Bump version and create a tag.
-
-```bash
-npm version patch
-# or: npm version minor / npm version major
-```
-
-5. Push commit and tag.
-
-```bash
-git push --follow-tags
-```
-
-6. Publish manually.
-
-```bash
-npm publish --access public
-```
-
-- If your npm account uses 2FA for publish, npm will require a one-time code during `npm publish`.
-
-## Commands
-
-```bash
+# 1. Initialize biotonomy scaffold
 bt bootstrap
-bt spec <feature|issue#>
-bt research <feature>
-bt implement <feature>
-bt review <feature>
-bt fix <feature>
-bt gates [feature]
+
+# 2. Define a new feature (creates specs/hello-world/SPEC.md)
+bt spec hello-world
+
+# 3. Check status
 bt status
-bt pr <feature> [--dry-run|--run]
-bt reset
 ```
 
-## Development
+## The "True Loop" Workflow
+
+The primary power of Biotonomy is the autonomous implementation driver. Instead of running stages manually, you can let Biotonomy drive Codex until the feature is complete and verified.
 
 ```bash
-npm test
-npm run lint
+# Start a loop that iterates research -> implement -> review -> fix
+# It continues until the review verdict is APPROVE and gates pass.
+bt loop my-feature --max-iterations 3
 ```
+
+## Manual Stage Progression
+
+If you prefer step-by-step control, use the individual commands:
+
+1. **`bt spec <feature|issue#>`**: Scaffolds a feature spec. If an issue number is provided, it fetches details from GitHub.
+2. **`bt research <feature>`**: Uses Codex to gather context and write `RESEARCH.md`.
+3. **`bt plan-review <feature>`**: Enforces an explicit planning gate before code is touched.
+4. **`bt implement <feature>`**: Primary code generation stage. Runs implementation gates (tests, lint) automatically.
+5. **`bt review <feature>`**: Generates a quality review of the implementation.
+6. **`bt fix <feature>`**: Addresses review findings and quality gate failures.
+7. **`bt pr <feature> --run`**: Formats artifacts into a PR description, pushes the branch, and opens a GitHub PR.
+
+## Expected Artifacts
+
+Biotonomy keeps your work organized under `specs/<feature>/`:
+
+- `SPEC.md`: Feature requirements and plan.
+- `RESEARCH.md`: Context and architectural findings.
+- `PLAN_REVIEW.md`: Planning gate verdict history.
+- `REVIEW.md`: Latest implementation review.
+- `progress.json`: State tracking for the loop driver.
+- `history/`: Versioned snapshots of every major stage iteration.
+- `.artifacts/`: Raw LLM logs and diagnostic traces.
+
+## Configuration & Quality Gates
+
+Biotonomy automatically detects your test/lint stack (npm, vitest, jest, eslint, etc.). You can override them in `.bt.env`:
+
+```bash
+BT_GATE_LINT="npm run lint"
+BT_GATE_TYPECHECK="tsc --noEmit"
+BT_GATE_TEST="npm test"
+BT_CODEX_BIN="/usr/local/bin/codex"
+```
+
+## Requirements
+
+- **Node.js**: >= 18
+- **git**: Required for state and PR management.
+- **gh CLI**: Required for `bt spec <issue#>` and `bt pr`.
+- **Codex**: Required for autonomous stages (`research`, `implement`, `review`, `fix`, `loop`).
+
+## Commands Reference
+
+```bash
+bt bootstrap                      # Initialize biotonomy in current repo
+bt spec <feature|issue#>          # Create/fetch spec
+bt research <feature>             # Run research phase
+bt plan-review <feature>          # Run planning gate
+bt implement <feature>            # Run implementation phase
+bt review <feature>               # Run review phase
+bt fix <feature>                  # Run fix phase
+bt loop <feature>                 # Run autonomous impl cycle
+bt gates [feature]                 # Run all quality gates
+bt status                         # Show workspace status
+bt pr <feature> [--run]           # Open GitHub PR
+bt reset                          # Clear local biotonomy state
+```
+
+---
+© 2026 Archive. CLI designed for autonomous workflows.
