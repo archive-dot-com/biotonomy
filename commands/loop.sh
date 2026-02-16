@@ -119,6 +119,9 @@ d['completedIterations'] = $iter
 d['result'] = 'implement-failed'
 d.setdefault('iterations', []).append({
     "iteration": $iter,
+    "implementStatus": "FAIL",
+    "reviewStatus": "SKIP",
+    "fixStatus": "SKIP",
     "verdict": "",
     "gates": "FAIL",
     "historyFile": ""
@@ -160,6 +163,19 @@ PY
       bt_info "gates: PASS"
     fi
 
+    local fix_status="SKIP"
+    if [[ "$verdict" == "NEEDS_CHANGES" ]]; then
+      bt_info "running fix..."
+      # Note: bt_cmd_fix already runs gates internally.
+      if bt_cmd_fix "$feature"; then
+        fix_status="PASS"
+      else
+        fix_status="FAIL"
+        bt_err "fix failed after iter $iter review; aborting loop"
+        return 1
+      fi
+    fi
+
     # Record iteration
     local ts
     ts="$(date +%Y-%m-%dT%H%M%S%z)"
@@ -177,6 +193,9 @@ with open(p, 'r') as f:
 data['completedIterations'] = $iter
 data['iterations'].append({
     "iteration": $iter,
+    "implementStatus": "PASS",
+    "reviewStatus": "PASS",
+    "fixStatus": "$fix_status",
     "verdict": "$verdict",
     "gates": "PASS" if "$gates_ok" == "1" else "FAIL",
     "historyFile": "$hist_file"
@@ -189,17 +208,6 @@ PY
       python3 -c "import json; p='$progress_file'; d=json.load(open(p)); d['result']='success'; json.dump(d, open(p, 'w'), indent=2)"
       bt_info "Loop successful! Verdict $verdict and Gates PASS."
       return 0
-    fi
-
-    if [[ "$verdict" == "NEEDS_CHANGES" ]]; then
-      bt_info "running fix..."
-      # Note: bt_cmd_fix already runs gates internally.
-      if bt_cmd_fix "$feature"; then
-        :
-      else
-        bt_err "fix failed after iter $iter review; aborting loop"
-        return 1
-      fi
     fi
 
     bt_info "Verdict is $verdict (or gates failed); looping..."

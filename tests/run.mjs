@@ -1386,4 +1386,58 @@ fi
   assert.deepEqual(lines, expected, `Incomplete or wrong sequence: ${lines.join(" -> ")}`);
 });
 
+test("issue #10: loop-progress.json persists per-iteration stage results", () => {
+  const cwd = mkTmp();
+  const spec = runBt(["spec", "feat-loop-stage-results"], { cwd });
+  assert.equal(spec.code, 0, spec.stderr);
+
+  const bin = path.join(cwd, "bin");
+  const codex = path.join(bin, "codex");
+  const reviewCount = path.join(cwd, "review-stage.count");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+out=""
+args=("$@")
+for ((i=0; i<\${#args[@]}; i++)); do
+  if [[ "\${args[i]}" == "-o" ]]; then
+    out="\${args[i+1]}"
+  fi
+done
+if [[ -n "$out" ]]; then
+  c=0
+  if [[ -f ${JSON.stringify(reviewCount)} ]]; then
+    c=$(cat ${JSON.stringify(reviewCount)})
+  fi
+  c=$((c+1))
+  printf '%s\n' "$c" > ${JSON.stringify(reviewCount)}
+  if [[ "$c" -eq 1 ]]; then
+    printf 'Verdict: NEEDS_CHANGES\n' > "$out"
+  else
+    printf 'Verdict: APPROVED\n' > "$out"
+  fi
+fi
+exit 0
+`
+  );
+
+  const res = runBt(["loop", "feat-loop-stage-results", "--max-iterations", "3"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stdout + res.stderr);
+
+  const progressPath = path.join(cwd, "specs", "feat-loop-stage-results", "loop-progress.json");
+  const progress = JSON.parse(fs.readFileSync(progressPath, "utf8"));
+
+  assert.equal(progress.iterations.length, 2);
+  assert.equal(progress.iterations[0].implementStatus, "PASS");
+  assert.equal(progress.iterations[0].reviewStatus, "PASS");
+  assert.equal(progress.iterations[0].fixStatus, "PASS");
+  assert.equal(progress.iterations[1].implementStatus, "PASS");
+  assert.equal(progress.iterations[1].reviewStatus, "PASS");
+  assert.equal(progress.iterations[1].fixStatus, "SKIP");
+});
+
 if (process.exitCode) process.exit(process.exitCode);
