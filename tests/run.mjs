@@ -282,7 +282,7 @@ test("implement fails when a configured gate fails", () => {
 
     const impl = runBt(["implement", "feat-x"], {
         cwd,
-        env: { PATH: `${bin}:${process.env.PATH}` }
+        env: { PATH: `${bin}:${process.env.PATH}`, BT_GATE_TEST: "false" }
     });
     assert.equal(impl.code, 1);
     assert.match(impl.stderr, /gate failed: test/i);
@@ -1370,7 +1370,8 @@ test("gates JSON stays valid when gate command has quotes and backslashes", () =
     ].join("\n")
   );
 
-  const res = runBt(["gates"], { cwd });
+  // Pass gate command via process env — process env takes precedence over .bt.env (#38)
+  const res = runBt(["gates"], { cwd, env: { BT_GATE_TEST: cmdWithEscapes } });
   assert.equal(res.code, 0, res.stderr);
 
   const gatesJson = path.join(cwd, ".bt", "state", "gates.json");
@@ -1644,7 +1645,7 @@ fi
 
   const res = runBt(["loop", "feat-seq", "--max-iterations", "3"], {
     cwd,
-    env: { PATH: `${bin}:${process.env.PATH}` },
+    env: { PATH: `${bin}:${process.env.PATH}`, BT_GATE_TEST: `${npm} test` },
   });
   assert.equal(res.code, 0, res.stdout + res.stderr);
 
@@ -1822,7 +1823,7 @@ test("loop (non-auto): implement/fix return non-zero when gates fail", () => {
 
     const res = runBt(["loop", "feat-loop-gate-fail", "--max-iterations", "1"], {
         cwd,
-        env: { PATH: `${bin}:${process.env.PATH}`, BT_GATE_TEST: "true", BT_GATE_LINT: "true", BT_GATE_TYPECHECK: "true" }
+        env: { PATH: `${bin}:${process.env.PATH}`, BT_GATE_TEST: `${npm} test`, BT_GATE_LINT: "true", BT_GATE_TYPECHECK: "true" }
     });
 
     assert.equal(res.code, 1, "loop should exit 1 when preflight gates fail");
@@ -1853,6 +1854,33 @@ test("loop.sh avoids unused preflight gate_args variable (SC2034 regression)", (
   const loopPath = path.join(repoRoot, "commands", "loop.sh");
   const content = fs.readFileSync(loopPath, "utf8");
   assert.doesNotMatch(content, /local\s+-a\s+gate_args=\(\)/, "loop.sh should not declare unused gate_args array");
+});
+
+test("issue #38: process env takes precedence over .bt.env defaults", () => {
+  const cwd = mkTmp();
+  // Bootstrap to create .bt.env with empty BT_GATE_TEST
+  const boot = runBt(["bootstrap"], { cwd });
+  assert.equal(boot.code, 0);
+
+  // Verify .bt.env has empty gate values (the default bootstrap output)
+  const envContent = fs.readFileSync(path.join(cwd, ".bt.env"), "utf8");
+  assert.match(envContent, /BT_GATE_TEST=/, ".bt.env should contain BT_GATE_TEST line");
+
+  // Now run gates with BT_GATE_TEST set in process env — should NOT be overwritten by .bt.env empty value
+  // Use a stderr-only marker to avoid polluting gate JSON stdout capture
+  const marker = "BT38_PROCESS_ENV_WINS";
+  const res = runBt(["gates"], { cwd, env: { BT_GATE_TEST: `echo ${marker} >&2` } });
+  assert.equal(res.code, 0, `gates should succeed: ${res.stderr}`);
+  // The gates output should not warn about "no gates ran"
+  assert.doesNotMatch(res.stderr, /no gates ran/i, "process env BT_GATE_TEST should override .bt.env empty value");
+  // Verify the process env gate command actually ran (marker appears in stderr)
+  assert.match(res.stderr, new RegExp(marker), "process env gate command should have executed");
+  // Check gates.json was written with the process env gate command
+  const gatesJson = path.join(cwd, ".bt", "state", "gates.json");
+  assert.ok(fs.existsSync(gatesJson), "gates.json should exist");
+  const data = JSON.parse(fs.readFileSync(gatesJson, "utf8"));
+  assert.ok(data.results.test, "gates.json should contain test gate result");
+  assert.equal(data.results.test.cmd, `echo ${marker} >&2`, "gate command should be from process env, not .bt.env");
 });
 
 if (process.exitCode) process.exit(process.exitCode);

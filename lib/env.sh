@@ -6,6 +6,14 @@ bt__export_kv() {
   local val="$2"
 
   [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 0
+
+  # Respect process env: only set if not already present in environment.
+  # This ensures BT_GATE_TEST='echo hi' bt gates works even when .bt.env
+  # contains an empty BT_GATE_TEST= line.  (#38)
+  if [[ -n "${!key+x}" ]]; then
+    return 0
+  fi
+
   # Export without eval; keep value literal even if it contains spaces/symbols.
   export "$key=$val"
 }
