@@ -31,7 +31,12 @@ EOF
 
   if bt_codex_available; then
     bt_info "running codex (full-auto) using prompts/plan-review.md"
-    if BT_FEATURE="$feature" BT_CODEX_LOG_FILE="/tmp/codex.log" bt_codex_exec_full_auto "$BT_ROOT/prompts/plan-review.md"; then
+    local artifacts_dir codex_logf
+    artifacts_dir="$dir/.artifacts"
+    mkdir -p "$artifacts_dir"
+    codex_logf="$artifacts_dir/codex-plan-review.log"
+    : >"$codex_logf"
+    if BT_FEATURE="$feature" BT_CODEX_LOG_FILE="$codex_logf" bt_codex_exec_full_auto "$BT_ROOT/prompts/plan-review.md"; then
       :
     else
       bt_die "codex failed (plan-review)"

@@ -378,6 +378,44 @@ exit 0
   assert.ok(fs.existsSync(out), `PLAN_REVIEW.md missing: ${res.stdout} ${res.stderr}`);
 });
 
+test("issue #29: plan-review uses feature-scoped artifact log path (not shared /tmp/codex.log)", () => {
+  const cwd = mkTmp();
+  const feature = "feat-plan-review-log-scope";
+
+  const spec = runBt(["spec", feature], { cwd });
+  assert.equal(spec.code, 0, spec.stderr);
+
+  const capturedLogPath = path.join(cwd, "captured-plan-review-log-path.txt");
+  const bin = path.join(cwd, "bin");
+  const codex = path.join(bin, "codex");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "\${BT_CODEX_LOG_FILE:-}" > ${JSON.stringify(capturedLogPath)}
+out="specs/\${BT_FEATURE}/PLAN_REVIEW.md"
+mkdir -p "\$(dirname "\$out")"
+printf '%s\\n' "# Plan Review from stub" "Verdict: APPROVED_PLAN" > "\$out"
+exit 0
+`
+  );
+
+  const res = runBt(["plan-review", feature], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stdout + res.stderr);
+
+  const expectedLogPathSuffix = path.join("specs", feature, ".artifacts", "codex-plan-review.log");
+  const actualLogPath = fs.readFileSync(capturedLogPath, "utf8").trim();
+  assert.ok(
+    actualLogPath.endsWith(expectedLogPathSuffix),
+    `expected feature-scoped artifact suffix ${expectedLogPathSuffix}, got: ${actualLogPath}`
+  );
+  assert.notEqual(actualLogPath, "/tmp/codex.log");
+  assert.ok(fs.existsSync(actualLogPath), "expected plan-review artifact log file missing");
+});
+
 test("implement hard-fails without approved PLAN_REVIEW verdict", () => {
     const cwd = mkTmp();
 
@@ -743,6 +781,109 @@ exit 0
   assert.ok(historyFiles.some((f) => f.endsWith("-loop-iter-002.md")), "missing loop iter 2 history");
 });
 
+test("issue #30: loop validates PLAN_REVIEW before preflight gates (missing PLAN_REVIEW)", () => {
+  const cwd = mkTmp();
+
+  runBt(["spec", "feat-loop-no-plan-preflight"], { cwd });
+
+  const events = path.join(cwd, "call-order.log");
+  const bin = path.join(cwd, "bin");
+  const npm = path.join(bin, "npm");
+  writeExe(
+    npm,
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "npm:$*" >> ${JSON.stringify(events)}
+exit 0
+`
+  );
+
+  writeFile(path.join(cwd, ".bt.env"), `BT_GATE_TEST=${npm} test\n`);
+
+  const res = runBt(["loop", "feat-loop-no-plan-preflight", "--max-iterations", "1"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+
+  assert.equal(res.code, 1, res.stdout + res.stderr);
+  assert.match(res.stderr, /PLAN_REVIEW\.md/i);
+
+  if (fs.existsSync(events)) {
+    const lines = fs.readFileSync(events, "utf8").trim().split("\n").filter(Boolean);
+    assert.ok(!lines.some((line) => line.startsWith("npm:")), `preflight gates should not run before PLAN_REVIEW validation: ${lines.join(" -> ")}`);
+  }
+});
+
+test("issue #30: loop validates PLAN_REVIEW before preflight gates (unapproved PLAN_REVIEW)", () => {
+  const cwd = mkTmp();
+
+  runBt(["spec", "feat-loop-unapproved-plan-preflight"], { cwd });
+  const featDir = path.join(cwd, "specs", "feat-loop-unapproved-plan-preflight");
+  fs.writeFileSync(path.join(featDir, "PLAN_REVIEW.md"), "Verdict: NEEDS_CHANGES\n");
+
+  const events = path.join(cwd, "call-order.log");
+  const bin = path.join(cwd, "bin");
+  const npm = path.join(bin, "npm");
+  writeExe(
+    npm,
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "npm:$*" >> ${JSON.stringify(events)}
+exit 0
+`
+  );
+
+  writeFile(path.join(cwd, ".bt.env"), `BT_GATE_TEST=${npm} test\n`);
+
+  const res = runBt(["loop", "feat-loop-unapproved-plan-preflight", "--max-iterations", "1"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+
+  assert.equal(res.code, 1, res.stdout + res.stderr);
+  assert.match(res.stderr, /PLAN_REVIEW\.md/i);
+
+  if (fs.existsSync(events)) {
+    const lines = fs.readFileSync(events, "utf8").trim().split("\n").filter(Boolean);
+    assert.ok(!lines.some((line) => line.startsWith("npm:")), `preflight gates should not run before PLAN_REVIEW validation: ${lines.join(" -> ")}`);
+  }
+});
+
+test("issue #28: loop fails loud when no gates are configured (no false PASS)", () => {
+  const cwd = mkTmp();
+
+  runBt(["spec", "feat-loop-no-gates"], { cwd });
+  const featDir = path.join(cwd, "specs", "feat-loop-no-gates");
+  fs.writeFileSync(path.join(featDir, "PLAN_REVIEW.md"), "Verdict: APPROVED_PLAN\n");
+
+  const bin = path.join(cwd, "bin");
+  const codex = path.join(bin, "codex");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+out=''
+for ((i=1;i<=$#;i++)); do
+  if [[ "\${!i}" == "-o" ]]; then
+    j=$((i+1)); out="\${!j}"
+  fi
+done
+[[ -n "$out" ]] && printf 'Verdict: APPROVED\n' > "$out"
+exit 0
+`
+  );
+
+  writeFile(path.join(cwd, ".bt.env"), "BT_LOOP_REQUIRE_GATES=1\n");
+
+  const res = runBt(["loop", "feat-loop-no-gates", "--max-iterations", "1"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+
+  assert.equal(res.code, 1, res.stdout + res.stderr);
+  assert.match(res.stderr, /no gates ran/i);
+});
+
 test("loop runs preflight gates before first implement iteration (stub npm + codex call-order log)", () => {
     const cwd = mkTmp();
 
@@ -922,6 +1063,41 @@ exit 2
 
   const args = fs.readFileSync(ghLog, "utf8");
   assert.match(args, /^issue\nview\n3\n-R\nacme-co\/biotonomy\n--json\ntitle,body,url\n/m);
+});
+
+test("spec issue#: README acceptance bullets generate README-specific stories (no canned internal stories)", () => {
+  const cwd = mkTmp();
+  writeFile(path.join(cwd, ".bt.env"), "BT_REPO=outside-org/docs-cli\n");
+
+  const bin = path.join(cwd, "bin");
+  const gh = path.join(bin, "gh");
+  writeExe(
+    gh,
+    `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" == "issue" && "$2" == "view" ]]; then
+  cat <<'JSON'
+{"title":"README refresh for new contributors","url":"https://github.com/outside-org/docs-cli/issues/27","body":"Update docs for external users.\\n\\n## Acceptance Criteria\\n- [ ] README includes prerequisites for macOS and Linux\\n- [ ] README quickstart includes bt spec 27 workflow\\n- [ ] README troubleshooting explains gh auth failures"}
+JSON
+  exit 0
+fi
+exit 2
+`
+  );
+
+  const res = runBt(["spec", "27"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stderr);
+
+  const specPath = path.join(cwd, "specs", "issue-27", "SPEC.md");
+  const spec = fs.readFileSync(specPath, "utf8");
+  assert.match(spec, /## \[ID:S1\].*README refresh for new contributors/);
+  assert.match(spec, /README includes prerequisites for macOS and Linux/);
+  assert.match(spec, /README troubleshooting explains gh auth failures/);
+  assert.doesNotMatch(spec, /Confirm repo resolution and env fallback/);
+  assert.doesNotMatch(spec, /Fetch issue details via gh/);
 });
 
 test("spec: existing feature SPEC is not overwritten without --force", () => {
@@ -1286,6 +1462,29 @@ exit 99
   assert.ok(res.stderr.includes("Abort: ship requires all feature files to be staged"), "missing abort message");
   assert.ok(res.stderr.includes("lib/index.mjs"), "should list the unstaged file");
   assert.ok(!fs.existsSync(npmLog), "npm should not run before unstaged-file validation");
+});
+
+test("issue #18: pr --dry-run --no-commit fails when unstaged file exists outside legacy paths", () => {
+  const cwd = mkTmp();
+  const git = spawnSync("bash", ["-lc", "git init -q"], { cwd, encoding: "utf8" });
+  assert.equal(git.status, 0, git.stderr);
+  const gitUser = spawnSync("bash", ["-lc", "git config user.email test@example.com && git config user.name test"], { cwd, encoding: "utf8" });
+  assert.equal(gitUser.status, 0, gitUser.stderr);
+
+  runBt(["bootstrap"], { cwd });
+  runBt(["spec", "feat-unstaged-src"], { cwd });
+  const baseline = spawnSync("bash", ["-lc", "git add -A && git commit -m baseline -q"], { cwd, encoding: "utf8" });
+  assert.equal(baseline.status, 0, baseline.stderr);
+
+  const srcDir = path.join(cwd, "src");
+  fs.mkdirSync(srcDir, { recursive: true });
+  fs.writeFileSync(path.join(srcDir, "app.ts"), "export const app = true;\n");
+
+  const res = runBt(["pr", "feat-unstaged-src", "--dry-run", "--no-commit"], { cwd });
+
+  assert.equal(res.code, 1, "pr should exit 1 when src/app.ts is unstaged");
+  assert.ok(res.stderr.includes("Abort: ship requires all feature files to be staged"), "missing abort message");
+  assert.ok(res.stderr.includes("src/app.ts"), "should list the unstaged src file");
 });
 
 test("P2: Artifacts section is included in PR body", () => {

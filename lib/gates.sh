@@ -77,6 +77,12 @@ bt_get_gate_config() {
 # Runs gates and returns a JSON string fragment with results.
 # Writes logs to stderr. Returns 0 if all gates passed, 1 otherwise.
 bt_run_gates() {
+  local require_any=0
+  if [[ "${1:-}" == "--require-any" ]]; then
+    require_any=1
+    shift
+  fi
+
   local config
   config="$(bt_get_gate_config)"
 
@@ -115,6 +121,9 @@ bt_run_gates() {
   if [[ "$any" == "0" ]]; then
     bt_warn "no gates ran"
     printf '{"ts": "%s", "results": {}}\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+    if [[ "$require_any" == "1" ]]; then
+      return 1
+    fi
     return 0
   fi
 
