@@ -13,7 +13,7 @@ const bt = path.join(repoRoot, "bt.sh");
 function runBt(args, { cwd, env } = {}) {
   const res = spawnSync("bash", [bt, ...args], {
     cwd,
-    env: { ...process.env, ...(env || {}) },
+    env: { ...process.env, BT_GATE_TEST: "true", ...(env || {}) },
     encoding: "utf8",
   });
   return {
