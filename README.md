@@ -140,6 +140,24 @@ Local (repo) usage:
 npx biotonomy --help
 ```
 
+## Targeting A Repo From Anywhere
+
+By default, `bt` uses your current working directory as the project root.
+
+To run against a different repo, use `--target <path>` (sets `BT_TARGET_DIR` for that invocation):
+
+```bash
+bt --target /path/to/repo bootstrap
+bt --target /path/to/repo status
+bt --target /path/to/repo spec archie
+```
+
+You can also set `BT_TARGET_DIR` in the environment (same behavior):
+
+```bash
+BT_TARGET_DIR=/path/to/repo bt status
+```
+
 ## Status (v0.1.0)
 
 Implemented today:

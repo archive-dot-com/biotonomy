@@ -87,6 +87,34 @@ test("BT_TARGET_DIR: bootstrap writes .bt.env/specs/.bt/hooks inside target (not
   assert.ok(!fs.existsSync(path.join(caller, ".bt")), "caller .bt/ should not be created");
 });
 
+test("--target: bootstrap writes .bt.env/specs/.bt/hooks inside target (not caller cwd)", () => {
+  const caller = mkTmp();
+  const target = mkTmp();
+
+  const res = runBt(["--target", target, "bootstrap"], { cwd: caller });
+  assert.equal(res.code, 0, res.stderr);
+
+  assert.ok(fs.existsSync(path.join(target, ".bt.env")), "target .bt.env missing");
+  assert.ok(fs.existsSync(path.join(target, "specs")), "target specs/ missing");
+  assert.ok(fs.existsSync(path.join(target, ".bt")), "target .bt/ missing");
+  assert.ok(fs.existsSync(path.join(target, "hooks")), "target hooks/ missing");
+
+  assert.ok(!fs.existsSync(path.join(caller, ".bt.env")), "caller .bt.env should not be created");
+  assert.ok(!fs.existsSync(path.join(caller, "specs")), "caller specs/ should not be created");
+  assert.ok(!fs.existsSync(path.join(caller, ".bt")), "caller .bt/ should not be created");
+});
+
+test("--target: can appear after subcommand and is stripped before subcommand parsing", () => {
+  const caller = mkTmp();
+  const target = mkTmp();
+
+  const res = runBt(["bootstrap", "--target", target], { cwd: caller });
+  assert.equal(res.code, 0, res.stderr);
+
+  assert.ok(fs.existsSync(path.join(target, ".bt.env")), "target .bt.env missing");
+  assert.ok(!fs.existsSync(path.join(caller, ".bt.env")), "caller .bt.env should not be created");
+});
+
 test("env loading (BT_SPECS_DIR) affects status output", () => {
   const cwd = mkTmp();
   writeFile(

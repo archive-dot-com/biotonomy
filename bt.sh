@@ -38,13 +38,14 @@ bt_usage() {
 biotonomy (bt) v$BT_VERSION
 
 Usage:
-  bt <command> [args]
+  bt [--target <path>] <command> [args]
 
 Commands:
   bootstrap  spec  research  implement  review  fix  compound  design  status  gates  reset  pr  ship
 
 Global options:
   -h, --help     Show help
+  --target <p>   Operate on target project root for this invocation (sets BT_TARGET_DIR)
   BT_ENV_FILE    Explicit path to a .bt.env (otherwise read ./.bt.env)
   BT_TARGET_DIR  Operate on this repo dir (sets BT_PROJECT_ROOT); env falls back to \$BT_TARGET_DIR/.bt.env
 
@@ -52,10 +53,42 @@ Examples:
   bt bootstrap
   bt spec 123
   bt status
+  bt --target /path/to/repo status
 EOF
 }
 
 bt_dispatch() {
+  # Global argv parsing (kept intentionally small; this is bash, not a full CLI framework).
+  # We support:
+  # - bt --target <path> <command> ...
+  # - bt <command> ... --target <path> ...
+  # - bt --target=<path> <command> ...
+  local rest=()
+  local target_arg=""
+  while [[ $# -gt 0 ]]; do
+    case "${1:-}" in
+      --target)
+        [[ $# -ge 2 ]] || bt_die "--target requires a value"
+        target_arg="${2:-}"
+        shift 2
+        ;;
+      --target=*)
+        target_arg="${1#--target=}"
+        shift
+        ;;
+      *)
+        rest+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+  if [[ -n "$target_arg" ]]; then
+    export BT_TARGET_DIR="$target_arg"
+  fi
+
+  set -- "${rest[@]}"
+
   local cmd="${1:-help}"
   shift || true
 

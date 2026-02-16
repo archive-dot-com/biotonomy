@@ -51,6 +51,11 @@ bt_cmd_pr() {
     return 2
   fi
 
+  # Ensure BT_PROJECT_ROOT reflects BT_TARGET_DIR / BT_ENV_FILE, and operate within it.
+  bt_env_load || true
+  [[ -n "${BT_PROJECT_ROOT:-}" ]] || bt_die "missing BT_PROJECT_ROOT"
+  cd "$BT_PROJECT_ROOT" || bt_die "failed to cd into BT_PROJECT_ROOT: $BT_PROJECT_ROOT"
+
   bt_info "shipping feature: $feature"
 
   # 1. Run Tests & Lint
