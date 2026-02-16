@@ -1734,4 +1734,24 @@ test("loop (non-auto): implement/fix return non-zero when gates fail", () => {
     assert.match(res.stderr, /preflight gates failed/i);
 });
 
+test("issue #31: audit umbrella issue template exists", () => {
+  const templatePath = path.join(repoRoot, ".github", "ISSUE_TEMPLATE", "audit-umbrella.md");
+  assert.ok(fs.existsSync(templatePath), `missing template: ${templatePath}`);
+});
+
+test("issue #31: audit umbrella template enforces receipts and unresolved sections", () => {
+  const templatePath = path.join(repoRoot, ".github", "ISSUE_TEMPLATE", "audit-umbrella.md");
+  const content = fs.readFileSync(templatePath, "utf8");
+
+  assert.match(content, /^name:\s*Audit Umbrella/m);
+  assert.match(content, /^about:\s*Umbrella issue for claim-by-claim audit closure/m);
+  assert.match(content, /^##\s+Required Closure Checklist/m);
+  assert.match(content, /^-\s+\[ \]\s+Claim-by-claim receipts table completed/m);
+  assert.match(content, /^-\s+\[ \]\s+Unresolved claims list completed \(or explicitly none\)/m);
+  assert.match(content, /^##\s+Claim-by-Claim Receipts/m);
+  assert.match(content, /^\|\s*Claim ID\s*\|\s*Receipt Link\(s\)\s*\|\s*Evidence Summary\s*\|/m);
+  assert.match(content, /^##\s+Unresolved Claims/m);
+  assert.match(content, /^-\s+\[ \]\s+None$/m);
+});
+
 if (process.exitCode) process.exit(process.exitCode);
