@@ -41,7 +41,7 @@ Usage:
   bt [--target <path>] <command> [args]
 
 Commands:
-  bootstrap  spec  research  implement  review  fix  compound  design  status  gates  reset  pr  ship
+  bootstrap  spec  research  implement  review  fix  loop  compound  design  status  gates  reset  pr  ship
 
 Global options:
   -h, --help     Show help
@@ -99,7 +99,7 @@ bt_dispatch() {
   bt_env_load || true
 
   case "$cmd" in
-    bootstrap|spec|research|implement|review|fix|compound|design|status|gates|reset|pr|ship) ;;
+    bootstrap|spec|research|implement|review|fix|loop|compound|design|status|gates|reset|pr|ship) ;;
     *)
       bt_err "unknown command: $cmd"
       bt_usage >&2

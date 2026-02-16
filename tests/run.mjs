@@ -224,7 +224,7 @@ if [[ -z "$out" ]]; then
   # full-auto path; do nothing
   exit 0
 fi
-printf '%s\\n' "# Review from stub" "Findings: none" > "$out"
+printf '%s\\n' "# Review from stub" "Findings: none" "Verdict: APPROVED" > "$out"
 exit 0
 `
   );
@@ -238,7 +238,45 @@ exit 0
   const out = path.join(cwd, "specs", "feat-v", "REVIEW.md");
   assert.ok(fs.existsSync(out), "REVIEW.md missing");
   const content = fs.readFileSync(out, "utf8");
-  assert.match(content, /^Verdict:/im);
+  assert.match(content, /^Verdict: APPROVED/im);
+});
+
+test("loop (stubbed): runs implement -> review and finishes on APPROVED", () => {
+    const cwd = mkTmp();
+    const spec = runBt(["spec", "feat-loop"], { cwd });
+    assert.equal(spec.code, 0);
+
+    const bin = path.join(cwd, "bin");
+    const codex = path.join(bin, "codex");
+    writeExe(
+      codex,
+      `#!/usr/bin/env bash
+set -euo pipefail
+# Stub for both implement and review.
+# If called with -o (review), write Verdict: APPROVED
+out=""
+args=("$@")
+for ((i=0; i<\${#args[@]}; i++)); do
+  if [[ "\${args[i]}" == "-o" ]]; then
+    out="\${args[i+1]}"
+  fi
+done
+
+if [[ -n "$out" ]]; then
+  printf "Verdict: APPROVED\\n" > "$out"
+fi
+exit 0
+`
+    );
+
+    const res = runBt(["loop", "feat-loop"], {
+        cwd,
+        env: { PATH: `${bin}:${process.env.PATH}` },
+    });
+    const combined = res.stdout + res.stderr;
+    assert.equal(res.code, 0, combined);
+    assert.match(combined, /verdict: APPROVED/);
+    assert.match(combined, /Loop successful/);
 });
 
 test("command routing: each command --help exits 0", () => {
