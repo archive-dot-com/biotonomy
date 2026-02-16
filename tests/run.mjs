@@ -1025,6 +1025,33 @@ exit 0
 });
 
 test("fix fails loud when codex fails and skips gates", () => {
+    const cwd = mkTmp();
+    const bin = path.join(cwd, "bin");
+    const codex = path.join(bin, "codex");
+    const npm = path.join(bin, "npm");
+    const callLog = path.join(cwd, "calls.log");
+
+    writeExe(codex, `#!/usr/bin/env bash
+echo "codex called" >> ${JSON.stringify(callLog)}
+exit 1
+`);
+    writeExe(npm, `#!/usr/bin/env bash
+echo "npm called" >> ${JSON.stringify(callLog)}
+exit 0
+`);
+
+    writeFile(path.join(cwd, ".bt.env"), `BT_GATE_TEST=${npm} test\n`);
+    runBt(["spec", "feat-f1"], { cwd });
+
+    const res = runBt(["fix", "feat-f1"], {
+        cwd,
+        env: { PATH: `${bin}:${process.env.PATH}` }
+    });
+
+    assert.equal(res.code, 1, "fix should exit non-zero when codex fails");
+    const log = fs.readFileSync(callLog, "utf8");
+    assert.match(log, /codex called/);
+    assert.doesNotMatch(log, /npm called/, "gates should not run after codex failure");
 });
 
 test("review fails loud when codex fails", () => {
