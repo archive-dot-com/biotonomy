@@ -54,6 +54,24 @@ test("help works", () => {
   assert.match(res.stdout + res.stderr, /biotonomy \(bt\)/);
 });
 
+test("launcher works when invoked via symlinked node_modules/.bin/bt path", () => {
+  const cwd = mkTmp();
+  const binDir = path.join(cwd, "node_modules", ".bin");
+  const shim = path.join(binDir, "bt");
+
+  fs.mkdirSync(binDir, { recursive: true });
+  fs.symlinkSync(path.join(repoRoot, "bt"), shim);
+
+  const res = spawnSync("bash", [shim, "--help"], {
+    cwd,
+    env: { ...process.env },
+    encoding: "utf8",
+  });
+
+  assert.equal(res.status ?? 1, 0, (res.stdout ?? "") + (res.stderr ?? ""));
+  assert.match((res.stdout ?? "") + (res.stderr ?? ""), /biotonomy \(bt\)/);
+});
+
 test("unknown command exits 2", () => {
   const res = runBt(["nope"]);
   assert.equal(res.code, 2);
