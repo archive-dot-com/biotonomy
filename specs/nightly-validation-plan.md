@@ -29,6 +29,7 @@ By morning, make Biotonomy reliably run a Ralph-like loop with clear failure mod
 2. **Stranger onboarding from npx/local path**
    - no global install path
    - validate docs and first-run ergonomics
+   - evidence (2026-02-16): automated guard `tests/run.mjs` test "package bin mapping includes npx biotonomy command" now validates `package.json.bin.biotonomy -> bt`
 
 ### C) Full codex audit
 - Run a comprehensive codex audit pass on Biotonomy for correctness, safety, DX, and loop reliability.

@@ -54,10 +54,34 @@ test("help works", () => {
   assert.match(res.stdout + res.stderr, /biotonomy \(bt\)/);
 });
 
+test("launcher works when invoked via symlinked node_modules/.bin/bt path", () => {
+  const cwd = mkTmp();
+  const binDir = path.join(cwd, "node_modules", ".bin");
+  const shim = path.join(binDir, "bt");
+
+  fs.mkdirSync(binDir, { recursive: true });
+  fs.symlinkSync(path.join(repoRoot, "bt"), shim);
+
+  const res = spawnSync("bash", [shim, "--help"], {
+    cwd,
+    env: { ...process.env },
+    encoding: "utf8",
+  });
+
+  assert.equal(res.status ?? 1, 0, (res.stdout ?? "") + (res.stderr ?? ""));
+  assert.match((res.stdout ?? "") + (res.stderr ?? ""), /biotonomy \(bt\)/);
+});
+
 test("unknown command exits 2", () => {
   const res = runBt(["nope"]);
   assert.equal(res.code, 2);
   assert.match(res.stderr, /unknown command/i);
+});
+
+test("package bin mapping includes npx biotonomy command", () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
+  assert.equal(pkg.bin?.bt, "bt");
+  assert.equal(pkg.bin?.biotonomy, "bt");
 });
 
 test("bootstrap creates .bt.env and folders", () => {
@@ -1566,6 +1590,29 @@ exit 0
   assert.equal(progress.iterations[1].implementStatus, "PASS");
   assert.equal(progress.iterations[1].reviewStatus, "PASS");
   assert.equal(progress.iterations[1].fixStatus, "SKIP");
+});
+
+test("loop (non-auto): implement/fix return non-zero when gates fail", () => {
+    const cwd = mkTmp();
+    runBt(["spec", "feat-loop-gate-fail"], { cwd });
+    writeFile(path.join(cwd, "specs", "feat-loop-gate-fail", "PLAN_REVIEW.md"), "Verdict: APPROVED_PLAN\n");
+
+    const bin = path.join(cwd, "bin");
+    const codex = path.join(bin, "codex");
+    writeExe(codex, `#!/usr/bin/env bash\nexit 0\n`);
+
+    const npm = path.join(bin, "npm");
+    writeExe(npm, `#!/usr/bin/env bash\nexit 1\n`);
+
+    writeFile(path.join(cwd, ".bt.env"), `BT_GATE_TEST=${npm} test\n`);
+
+    const res = runBt(["loop", "feat-loop-gate-fail", "--max-iterations", "1"], {
+        cwd,
+        env: { PATH: `${bin}:${process.env.PATH}`, BT_GATE_TEST: "true", BT_GATE_LINT: "true", BT_GATE_TYPECHECK: "true" }
+    });
+
+    assert.equal(res.code, 1, "loop should exit 1 when preflight gates fail");
+    assert.match(res.stderr, /preflight gates failed/i);
 });
 
 if (process.exitCode) process.exit(process.exitCode);
