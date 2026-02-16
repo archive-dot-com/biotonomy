@@ -1323,6 +1323,29 @@ exit 99
   assert.ok(!fs.existsSync(npmLog), "npm should not run before unstaged-file validation");
 });
 
+test("issue #18: pr --dry-run --no-commit fails when unstaged file exists outside legacy paths", () => {
+  const cwd = mkTmp();
+  const git = spawnSync("bash", ["-lc", "git init -q"], { cwd, encoding: "utf8" });
+  assert.equal(git.status, 0, git.stderr);
+  const gitUser = spawnSync("bash", ["-lc", "git config user.email test@example.com && git config user.name test"], { cwd, encoding: "utf8" });
+  assert.equal(gitUser.status, 0, gitUser.stderr);
+
+  runBt(["bootstrap"], { cwd });
+  runBt(["spec", "feat-unstaged-src"], { cwd });
+  const baseline = spawnSync("bash", ["-lc", "git add -A && git commit -m baseline -q"], { cwd, encoding: "utf8" });
+  assert.equal(baseline.status, 0, baseline.stderr);
+
+  const srcDir = path.join(cwd, "src");
+  fs.mkdirSync(srcDir, { recursive: true });
+  fs.writeFileSync(path.join(srcDir, "app.ts"), "export const app = true;\n");
+
+  const res = runBt(["pr", "feat-unstaged-src", "--dry-run", "--no-commit"], { cwd });
+
+  assert.equal(res.code, 1, "pr should exit 1 when src/app.ts is unstaged");
+  assert.ok(res.stderr.includes("Abort: ship requires all feature files to be staged"), "missing abort message");
+  assert.ok(res.stderr.includes("src/app.ts"), "should list the unstaged src file");
+});
+
 test("P2: Artifacts section is included in PR body", () => {
   const cwd = mkTmp();
   runBt(["bootstrap"], { cwd });

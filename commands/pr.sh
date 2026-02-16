@@ -191,12 +191,12 @@ bt_cmd_pr() {
   # 2. Fail-loud preflight for unstaged expected files (before tests/commit flow).
   # P0 #18: fail-loud even with --no-commit
   local unstaged=""
-  local check_paths=(tests lib commands scripts specs prompts)
   if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    unstaged="$(git ls-files --others --modified --exclude-standard -- "${check_paths[@]}" 2>/dev/null || true)"
+    # Protect all repo files, not only a fixed allowlist of directories.
+    unstaged="$(git ls-files --others --modified --exclude-standard 2>/dev/null || true)"
   else
-    # Outside a git repo, treat present implementation files as unstaged by definition.
-    unstaged="$(find "${check_paths[@]}" -type f 2>/dev/null | LC_ALL=C sort || true)"
+    # Outside a git repo, treat present files (except .git internals) as unstaged by definition.
+    unstaged="$(find . -path './.git' -prune -o -type f -print 2>/dev/null | sed 's#^\./##' | LC_ALL=C sort || true)"
   fi
   if [[ -n "$unstaged" ]]; then
     bt_err "Found unstaged files that might be required for this feature:"
