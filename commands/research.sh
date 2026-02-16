@@ -30,20 +30,20 @@ EOF
   bt_codex_available || bt_die "codex required for research (set BT_CODEX_BIN or install codex)"
 
   bt_info "running codex (read-only) using prompts/research.md -> $out"
-  local codex_ec=0 codex_errf artifacts_dir
+  local codex_ec=0 codex_logf artifacts_dir
   artifacts_dir="$dir/.artifacts"
   mkdir -p "$artifacts_dir"
   # Deterministic path for reproducible runs and CI artifacts (no mktemp randomness).
-  codex_errf="$artifacts_dir/codex-research.stderr"
-  : >"$codex_errf"
-  if ! BT_FEATURE="$feature" bt_codex_exec_read_only "$BT_ROOT/prompts/research.md" "$out" 2>"$codex_errf"; then
+  codex_logf="$artifacts_dir/codex-research.log"
+  : >"$codex_logf"
+  if ! BT_FEATURE="$feature" BT_CODEX_LOG_FILE="$codex_logf" bt_codex_exec_read_only "$BT_ROOT/prompts/research.md" "$out"; then
     codex_ec=$?
     bt_warn "codex exited non-zero (research): $codex_ec"
   fi
 
   if [[ ! -f "$out" ]]; then
     local err_tail
-    err_tail="$(tail -n 80 "$codex_errf" 2>/dev/null || true)"
+    err_tail="$(tail -n 80 "$codex_logf" 2>/dev/null || true)"
     cat >"$out" <<EOF
 # Research: $feature
 

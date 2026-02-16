@@ -26,13 +26,13 @@ EOF
   [[ -d "$dir" ]] || bt_die "missing feature dir: $dir (run: bt spec ...)"
 
   local out="$dir/REVIEW.md"
-  local artifacts_dir codex_errf
+  local artifacts_dir codex_logf
   artifacts_dir="$dir/.artifacts"
   mkdir -p "$artifacts_dir"
-  codex_errf="$artifacts_dir/codex-review.stderr"
-  : >"$codex_errf"
+  codex_logf="$artifacts_dir/codex-review.log"
+  : >"$codex_logf"
   local codex_ec=0
-  if ! BT_FEATURE="$feature" bt_codex_exec_read_only "$BT_ROOT/prompts/review.md" "$out" 2> >(tee "$codex_errf" >&2); then
+  if ! BT_FEATURE="$feature" BT_CODEX_LOG_FILE="$codex_logf" bt_codex_exec_read_only "$BT_ROOT/prompts/review.md" "$out"; then
     codex_ec=$?
     bt_warn "codex exited non-zero (review): $codex_ec"
   fi

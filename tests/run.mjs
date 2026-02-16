@@ -191,6 +191,9 @@ exit 0
   assert.ok(fs.existsSync(out), "RESEARCH.md missing");
   const content = fs.readFileSync(out, "utf8");
   assert.match(content, /^# Research: feat-r/m);
+
+  const log = path.join(cwd, "specs", "feat-r", ".artifacts", "codex-research.log");
+  assert.ok(fs.existsSync(log), "codex-research.log missing");
 });
 
 test("review writes REVIEW.md with Verdict: (stubs codex via PATH)", () => {

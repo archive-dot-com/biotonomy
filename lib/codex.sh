@@ -17,7 +17,9 @@ bt_codex_exec_full_auto() {
   fi
   local bin
   bin="$(bt_codex_bin)"
-  "$bin" exec --full-auto -C "$BT_PROJECT_ROOT" "$(cat "$prompt_file")"
+  local log_file
+  log_file="${BT_CODEX_LOG_FILE:-/dev/null}"
+  "$bin" exec --full-auto -C "$BT_PROJECT_ROOT" "$(cat "$prompt_file")" > >(tee -a "$log_file") 2>&1
 }
 
 bt_codex_exec_read_only() {
@@ -30,6 +32,8 @@ bt_codex_exec_read_only() {
   fi
   local bin
   bin="$(bt_codex_bin)"
-  "$bin" exec -s read-only -C "$BT_PROJECT_ROOT" -o "$out_file" "$(cat "$prompt_file")"
+  local log_file
+  log_file="${BT_CODEX_LOG_FILE:-/dev/null}"
+  "$bin" exec -s read-only -C "$BT_PROJECT_ROOT" -o "$out_file" "$(cat "$prompt_file")" > >(tee -a "$log_file") 2>&1
 }
 
