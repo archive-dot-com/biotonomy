@@ -924,6 +924,41 @@ exit 2
   assert.match(args, /^issue\nview\n3\n-R\nacme-co\/biotonomy\n--json\ntitle,body,url\n/m);
 });
 
+test("spec issue#: README acceptance bullets generate README-specific stories (no canned internal stories)", () => {
+  const cwd = mkTmp();
+  writeFile(path.join(cwd, ".bt.env"), "BT_REPO=outside-org/docs-cli\n");
+
+  const bin = path.join(cwd, "bin");
+  const gh = path.join(bin, "gh");
+  writeExe(
+    gh,
+    `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" == "issue" && "$2" == "view" ]]; then
+  cat <<'JSON'
+{"title":"README refresh for new contributors","url":"https://github.com/outside-org/docs-cli/issues/27","body":"Update docs for external users.\\n\\n## Acceptance Criteria\\n- [ ] README includes prerequisites for macOS and Linux\\n- [ ] README quickstart includes bt spec 27 workflow\\n- [ ] README troubleshooting explains gh auth failures"}
+JSON
+  exit 0
+fi
+exit 2
+`
+  );
+
+  const res = runBt(["spec", "27"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stderr);
+
+  const specPath = path.join(cwd, "specs", "issue-27", "SPEC.md");
+  const spec = fs.readFileSync(specPath, "utf8");
+  assert.match(spec, /## \[ID:S1\].*README refresh for new contributors/);
+  assert.match(spec, /README includes prerequisites for macOS and Linux/);
+  assert.match(spec, /README troubleshooting explains gh auth failures/);
+  assert.doesNotMatch(spec, /Confirm repo resolution and env fallback/);
+  assert.doesNotMatch(spec, /Fetch issue details via gh/);
+});
+
 test("spec: existing feature SPEC is not overwritten without --force", () => {
   const cwd = mkTmp();
   const first = runBt(["spec", "feat-force-default"], { cwd });

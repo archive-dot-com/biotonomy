@@ -38,6 +38,84 @@ NODE
   )"
 }
 
+bt__stories_from_issue_json() {
+  bt__require_cmd node
+  node -e "$(
+    cat <<'NODE'
+const fs = require("fs");
+const j = JSON.parse(fs.readFileSync(0, "utf8") || "{}");
+
+function clean(s) {
+  return String(s || "").replace(/\s+/g, " ").trim();
+}
+
+const title = clean(j.title);
+const body = String(j.body || "").replace(/\r/g, "");
+const lines = body.split("\n");
+
+let inAcceptance = false;
+const acceptanceBullets = [];
+const allBullets = [];
+for (const rawLine of lines) {
+  const line = rawLine || "";
+  if (/^\s*#{1,6}\s*acceptance\b/i.test(line) || /^\s*acceptance criteria\s*:?\s*$/i.test(line)) {
+    inAcceptance = true;
+    continue;
+  }
+  if (/^\s*#{1,6}\s+/.test(line) && inAcceptance) {
+    inAcceptance = false;
+  }
+
+  const m = line.match(/^\s*[-*]\s+(?:\[[ xX]\]\s*)?(.+?)\s*$/);
+  if (!m) {
+    continue;
+  }
+  const bullet = clean(m[1]);
+  if (!bullet) {
+    continue;
+  }
+  allBullets.push(bullet);
+  if (inAcceptance) {
+    acceptanceBullets.push(bullet);
+  }
+}
+
+const selectedBullets = acceptanceBullets.length > 0 ? acceptanceBullets : allBullets;
+const storyTitles = [];
+if (title) {
+  storyTitles.push(title);
+}
+for (const bullet of selectedBullets) {
+  if (storyTitles.length >= 5) {
+    break;
+  }
+  storyTitles.push(bullet);
+}
+
+if (storyTitles.length === 0) {
+  const fallback = clean(body).slice(0, 120);
+  if (fallback) {
+    storyTitles.push(fallback);
+  } else {
+    storyTitles.push("Capture issue requirements");
+  }
+}
+
+let out = "";
+for (let i = 0; i < storyTitles.length; i += 1) {
+  const id = i + 1;
+  const titleText = storyTitles[i];
+  out += "## [ID:S" + id + "] " + titleText + "\n";
+  out += "- **status:** draft\n";
+  out += "- **priority:** " + (id <= 3 ? 1 : 2) + "\n";
+  out += "- **acceptance:** " + titleText + "\n";
+  out += "- **tests:**\n\n";
+}
+process.stdout.write(out);
+NODE
+  )"
+}
+
 bt_cmd_spec() {
   local force=0
   local arg=""
@@ -132,8 +210,9 @@ EOF
     [[ -n "$title" ]] || title="(untitled)"
     [[ -n "$url" ]] || url="https://github.com/$repo/issues/$issue"
 
-    local summary
+    local summary stories
     summary="$(bt__summarize_body "$body")"
+    stories="$(printf '%s' "$json" | bt__stories_from_issue_json)"
 
     cat >"$spec" <<EOF
 ---
@@ -154,35 +233,7 @@ $summary
 
 # Stories
 
-## [ID:S1] Confirm repo resolution and env fallback
-- **status:** draft
-- **priority:** 1
-- **acceptance:** bt can determine repo slug from git remote origin; otherwise requires BT_REPO
-- **tests:**
-
-## [ID:S2] Fetch issue details via gh
-- **status:** draft
-- **priority:** 1
-- **acceptance:** bt spec <issue#> uses gh to retrieve title/body/url and handles errors clearly
-- **tests:**
-
-## [ID:S3] Generate a SPEC.md with frontmatter + problem summary
-- **status:** draft
-- **priority:** 1
-- **acceptance:** SPEC includes required frontmatter, a Problem section, and a Stories section (3-7 stories)
-- **tests:**
-
-## [ID:S4] Record exact gh commands used in SPEC footer
-- **status:** draft
-- **priority:** 2
-- **acceptance:** SPEC footer includes the exact gh command(s) executed
-- **tests:**
-
-## [ID:S5] Add tests stubbing gh via PATH
-- **status:** draft
-- **priority:** 1
-- **acceptance:** tests run offline and validate SPEC content generation
-- **tests:**
+${stories}
 
 ---
 
