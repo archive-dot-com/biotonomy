@@ -365,6 +365,62 @@ exit 0
   assert.equal(progress.iterations[1].verdict, "APPROVED");
 });
 
+test("loop runs implement before each review iteration; fix only after NEEDS_CHANGES verdict", () => {
+  const cwd = mkTmp();
+  const spec = runBt(["spec", "feat-loop-order"], { cwd });
+  assert.equal(spec.code, 0, spec.stderr);
+
+  const bin = path.join(cwd, "bin");
+  const codex = path.join(bin, "codex");
+  const reviewCount = path.join(cwd, "review-order.count");
+  const events = path.join(cwd, "loop-order.events");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+logf="\${BT_CODEX_LOG_FILE:-}"
+kind="$(basename "$logf" .log | sed 's/^codex-//')"
+printf '%s\\n' "$kind" >> ${JSON.stringify(events)}
+
+out=""
+args=("$@")
+for ((i=0; i<\${#args[@]}; i++)); do
+  if [[ "\${args[i]}" == "-o" ]]; then
+    out="\${args[i+1]}"
+  fi
+done
+
+if [[ -n "$out" ]]; then
+  c=0
+  if [[ -f ${JSON.stringify(reviewCount)} ]]; then
+    c=$(cat ${JSON.stringify(reviewCount)})
+  fi
+  c=$((c+1))
+  printf '%s\\n' "$c" > ${JSON.stringify(reviewCount)}
+  if [[ "$c" -eq 1 ]]; then
+    printf 'Verdict: NEEDS_CHANGES\\n' > "$out"
+  else
+    printf 'Verdict: APPROVED\\n' > "$out"
+  fi
+fi
+exit 0
+`
+  );
+
+  const res = runBt(["loop", "feat-loop-order", "--max-iterations", "3"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stdout + res.stderr);
+
+  const callOrder = fs.readFileSync(events, "utf8").trim().split("\n").filter(Boolean);
+  assert.deepEqual(
+    callOrder,
+    ["implement", "review", "fix", "implement", "review"],
+    `unexpected loop order: ${callOrder.join(" -> ")}`
+  );
+});
+
 test("loop exits non-zero on max iterations and persists failure progress", () => {
   const cwd = mkTmp();
   const spec = runBt(["spec", "feat-loop-max-fail"], { cwd });
@@ -949,4 +1005,3 @@ exit 0
 });
 
 if (process.exitCode) process.exit(process.exitCode);
-

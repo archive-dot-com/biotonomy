@@ -88,17 +88,10 @@ EOF
     iter=$((iter + 1))
     bt_info "--- Iteration $iter / $max_iter ---"
 
-    # 1. Run Implement (or Fix on subsequent turns)
-    if [[ "$iter" -eq 1 ]]; then
-      bt_info "running implement..."
-      if ! bt_cmd_implement "$feature"; then
-        bt_warn "implement or gates failed on iter $iter"
-      fi
-    else
-      bt_info "running fix..."
-      if ! bt_cmd_fix "$feature"; then
-        bt_warn "fix or gates failed on iter $iter"
-      fi
+    # 1. Run Implement on every iteration
+    bt_info "running implement..."
+    if ! bt_cmd_implement "$feature"; then
+      bt_warn "implement or gates failed on iter $iter"
     fi
 
     # 2. Run Review
@@ -156,6 +149,13 @@ PY
       python3 -c "import json; p='$progress_file'; d=json.load(open(p)); d['result']='success'; json.dump(d, open(p, 'w'), indent=2)"
       bt_info "Loop successful! Verdict APPROVED and Gates PASS."
       return 0
+    fi
+
+    if [[ "$verdict" == "NEEDS_CHANGES" ]]; then
+      bt_info "running fix..."
+      if ! bt_cmd_fix "$feature"; then
+        bt_warn "fix or gates failed after iter $iter review"
+      fi
     fi
 
     bt_info "Verdict is $verdict (or gates failed); looping..."
