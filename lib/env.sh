@@ -53,20 +53,35 @@ bt_env_load_file() {
 }
 
 bt_env_load() {
+  # Optional: run bt from anywhere, but operate on a specific target repo.
+  # When set, BT_TARGET_DIR becomes the effective BT_PROJECT_ROOT for all commands.
+  if [[ -n "${BT_TARGET_DIR:-}" ]]; then
+    local td
+    td="$(bt_realpath "$BT_TARGET_DIR")"
+    [[ -e "$td" ]] || bt_die "BT_TARGET_DIR does not exist: $BT_TARGET_DIR"
+    [[ -d "$td" ]] || bt_die "BT_TARGET_DIR is not a directory: $BT_TARGET_DIR"
+    export BT_TARGET_DIR="$td"
+  fi
+
   local env_file="${BT_ENV_FILE:-}"
   if [[ -n "$env_file" ]]; then
     env_file="$(bt_realpath "$env_file")"
     bt_env_load_file "$env_file" || bt_die "failed to load BT_ENV_FILE=$env_file"
   else
-    env_file="$(bt_find_up ".bt.env" "$PWD" 2>/dev/null || true)"
-    if [[ -n "$env_file" ]]; then
-      bt_env_load_file "$env_file" || bt_die "failed to load env: $env_file"
+    # Prefer project config from the caller's current working directory.
+    if [[ -f "$PWD/.bt.env" ]]; then
+      bt_env_load_file "$PWD/.bt.env" || bt_die "failed to load env: $PWD/.bt.env"
+    # If running with a target repo, fall back to that repo's .bt.env.
+    elif [[ -n "${BT_TARGET_DIR:-}" && -f "$BT_TARGET_DIR/.bt.env" ]]; then
+      bt_env_load_file "$BT_TARGET_DIR/.bt.env" || bt_die "failed to load env: $BT_TARGET_DIR/.bt.env"
     fi
   fi
 
   # Defaults
   export BT_PROJECT_ROOT
-  if [[ -n "${BT_ENV_FILE:-}" ]]; then
+  if [[ -n "${BT_TARGET_DIR:-}" ]]; then
+    BT_PROJECT_ROOT="$BT_TARGET_DIR"
+  elif [[ -n "${BT_ENV_FILE:-}" ]]; then
     BT_PROJECT_ROOT="$(cd "$(dirname "$BT_ENV_FILE")" && pwd)"
   else
     BT_PROJECT_ROOT="$PWD"

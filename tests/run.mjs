@@ -70,6 +70,23 @@ test("bootstrap creates .bt.env and folders", () => {
   assert.ok(fs.existsSync(path.join(cwd, "hooks")));
 });
 
+test("BT_TARGET_DIR: bootstrap writes .bt.env/specs/.bt/hooks inside target (not caller cwd)", () => {
+  const caller = mkTmp();
+  const target = mkTmp();
+
+  const res = runBt(["bootstrap"], { cwd: caller, env: { BT_TARGET_DIR: target } });
+  assert.equal(res.code, 0, res.stderr);
+
+  assert.ok(fs.existsSync(path.join(target, ".bt.env")), "target .bt.env missing");
+  assert.ok(fs.existsSync(path.join(target, "specs")), "target specs/ missing");
+  assert.ok(fs.existsSync(path.join(target, ".bt")), "target .bt/ missing");
+  assert.ok(fs.existsSync(path.join(target, "hooks")), "target hooks/ missing");
+
+  assert.ok(!fs.existsSync(path.join(caller, ".bt.env")), "caller .bt.env should not be created");
+  assert.ok(!fs.existsSync(path.join(caller, "specs")), "caller specs/ should not be created");
+  assert.ok(!fs.existsSync(path.join(caller, ".bt")), "caller .bt/ should not be created");
+});
+
 test("env loading (BT_SPECS_DIR) affects status output", () => {
   const cwd = mkTmp();
   writeFile(
@@ -81,6 +98,18 @@ test("env loading (BT_SPECS_DIR) affects status output", () => {
   const res = runBt(["status"], { cwd });
   assert.equal(res.code, 0);
   assert.match(res.stdout, /specs_dir: specz/);
+});
+
+test("BT_TARGET_DIR: spec writes SPEC.md under target", () => {
+  const caller = mkTmp();
+  const target = mkTmp();
+
+  const res = runBt(["spec", "feat-t"], { cwd: caller, env: { BT_TARGET_DIR: target } });
+  assert.equal(res.code, 0, res.stderr);
+
+  const specPath = path.join(target, "specs", "feat-t", "SPEC.md");
+  assert.ok(fs.existsSync(specPath), "target SPEC.md missing");
+  assert.ok(!fs.existsSync(path.join(caller, "specs", "feat-t", "SPEC.md")), "caller SPEC.md should not be created");
 });
 
 test("implement fails when a configured gate fails", () => {

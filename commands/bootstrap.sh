@@ -12,7 +12,10 @@ EOF
     return 0
   fi
 
-  local env_path="$PWD/.bt.env"
+  # Operate within the effective project root (BT_TARGET_DIR if set).
+  local root="${BT_PROJECT_ROOT:-$PWD}"
+
+  local env_path="$root/.bt.env"
   if [[ -f "$env_path" ]]; then
     bt_info "found existing .bt.env"
   else
@@ -37,9 +40,8 @@ EOF
     bt_info "wrote $env_path"
   fi
 
-  mkdir -p "$PWD/specs" "$PWD/.bt" "$PWD/hooks"
+  mkdir -p "$root/specs" "$root/.bt" "$root/hooks"
   bt_info "ensured dirs: specs/ .bt/ hooks/"
 
-  bt_notify "bt bootstrap complete in $PWD"
+  bt_notify "bt bootstrap complete in $root"
 }
-

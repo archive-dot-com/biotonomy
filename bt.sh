@@ -45,7 +45,8 @@ Commands:
 
 Global options:
   -h, --help     Show help
-  BT_ENV_FILE    Explicit path to a .bt.env (otherwise search upward from cwd)
+  BT_ENV_FILE    Explicit path to a .bt.env (otherwise read ./.bt.env)
+  BT_TARGET_DIR  Operate on this repo dir (sets BT_PROJECT_ROOT); env falls back to \$BT_TARGET_DIR/.bt.env
 
 Examples:
   bt bootstrap
