@@ -33,12 +33,12 @@ bt__show_gates() {
   json="$(cat "$json_file")"
   
   local ts
-  ts=$(printf '%s' "$json" | grep -oE '"ts": "[^"]+"' | cut -d'"' -f4 || echo "unknown")
+  ts=$(printf '%s' "$json" | grep -oE '"ts"[[:space:]]*:[[:space:]]*"[^"]+"' | cut -d'"' -f4 || echo "unknown")
   
   # A simple heuristic to check if any status is non-zero
-  # We look for "status": N where N > 0
+  # We look for "status": N where N > 0 (whitespace-insensitive)
   local fails
-  fails=$(printf '%s' "$json" | grep -oE '"status": [1-9][0-9]*' | wc -l | xargs)
+  fails=$(printf '%s' "$json" | grep -oE '"status"[[:space:]]*:[[:space:]]*[1-9][0-9]*' | wc -l | xargs)
   
   local status="pass"
   [[ "$fails" -gt 0 ]] && status="fail"
@@ -52,7 +52,7 @@ bt__show_gates() {
     local k
     # This regex is a bit fragile but works for the predictable format we write
     for k in "lint" "typecheck" "test"; do
-        if echo "$json" | grep -qE "\"$k\": \{[^\}]*\"status\": [1-9][0-9]*"; then
+        if echo "$json" | grep -qE "\"$k\"[[:space:]]*:[[:space:]]*\{[^\}]*\"status\"[[:space:]]*:[[:space:]]*[1-9][0-9]*"; then
             detail="${detail}${k} "
         fi
     done

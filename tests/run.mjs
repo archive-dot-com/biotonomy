@@ -149,6 +149,18 @@ test("status counting: treats '**status:** completed' as done", () => {
   );
 });
 
+test("status gate parsing handles compact JSON without whitespace", () => {
+  const cwd = mkTmp();
+  writeFile(
+    path.join(cwd, ".bt", "state", "gates.json"),
+    '{"ts":"2026-02-16T02:00:00Z","results":{"lint":{"cmd":"npm run lint","status":0},"test":{"cmd":"npm test","status":1}}}'
+  );
+
+  const res = runBt(["status"], { cwd });
+  assert.equal(res.code, 0, res.stderr);
+  assert.match(res.stdout, /global:\s*\[gates:fail 2026-02-16T02:00:00Z \(test\)\]/);
+});
+
 test("BT_TARGET_DIR: spec writes SPEC.md under target", () => {
   const caller = mkTmp();
   const target = mkTmp();
