@@ -128,6 +128,27 @@ test("env loading (BT_SPECS_DIR) affects status output", () => {
   assert.match(res.stdout, /specs_dir: specz/);
 });
 
+test("status counting: treats '**status:** completed' as done", () => {
+  const cwd = mkTmp();
+  writeFile(
+    path.join(cwd, "specs", "feat-completed", "SPEC.md"),
+    [
+      "# SPEC",
+      "",
+      "- **story:** verify completed mapping",
+      "  - **status:** completed",
+      "",
+    ].join("\n")
+  );
+
+  const res = runBt(["status"], { cwd });
+  assert.equal(res.code, 0, res.stderr);
+  assert.match(
+    res.stdout,
+    /feature: feat-completed stories=1 pending=0 in_progress=0 done=1 failed=0 blocked=0/
+  );
+});
+
 test("BT_TARGET_DIR: spec writes SPEC.md under target", () => {
   const caller = mkTmp();
   const target = mkTmp();

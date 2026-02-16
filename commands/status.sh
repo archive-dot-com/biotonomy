@@ -5,14 +5,14 @@ bt__count_statuses() {
   local spec="$1"
   awk '
     BEGIN { pending=0; in_progress=0; done=0; failed=0; blocked=0; total=0 }
-    /^\- \*\*status:\*\*/ {
+    /^[[:space:]]*- \*\*status:\*\*/ {
       s=$0
-      sub(/.*\*\*status:\*\* /,"",s)
+      sub(/^[[:space:]]*- \*\*status:\*\*[[:space:]]*/,"",s)
       gsub(/[[:space:]]+/,"",s)
       total++
       if (s=="pending") pending++
       else if (s=="in_progress") in_progress++
-      else if (s=="done") done++
+      else if (s=="done" || s=="completed") done++
       else if (s=="failed") failed++
       else if (s=="blocked") blocked++
     }
