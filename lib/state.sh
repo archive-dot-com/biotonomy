@@ -14,9 +14,28 @@ bt_ensure_dirs() {
   mkdir -p "$(bt_specs_path)" "$BT_PROJECT_ROOT/$BT_STATE_DIR"
 }
 
+bt_sanitize_feature() {
+  local s="${1:-}"
+  # Replace characters not in [A-Za-z0-9._-] with underscore
+  s="${s//[^A-Za-z0-9._-]/_}"
+  # Ensure it doesn't start with a dot or dash and isn't empty
+  if [[ "$s" =~ ^[._-] ]]; then
+    s="f$s"
+  fi
+  if [[ -z "$s" ]]; then
+    s="feature"
+  fi
+  printf '%s\n' "$s"
+}
+
 bt_require_feature() {
   local feature="${1:-${BT_FEATURE:-}}"
   [[ -n "$feature" ]] || bt_die "feature required (pass as first arg or set BT_FEATURE)"
+
+  # Apply sanitization if it doesn't already pass validation
+  if [[ "$feature" == *"/"* || "$feature" == *".."* || ! "$feature" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+     feature="$(bt_sanitize_feature "$feature")"
+  fi
 
   # Prevent path traversal and keep on-disk state predictable.
   [[ "$feature" != *"/"* ]] || bt_die "invalid feature (must not contain '/'): $feature"

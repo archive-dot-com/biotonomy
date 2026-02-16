@@ -29,26 +29,20 @@ EOF
 
   local out="$dir/PLAN_REVIEW.md"
 
-  if bt_codex_available; then
-    bt_info "running codex (full-auto) using prompts/plan-review.md"
-    local artifacts_dir codex_logf
-    artifacts_dir="$dir/.artifacts"
-    mkdir -p "$artifacts_dir"
-    codex_logf="$artifacts_dir/codex-plan-review.log"
-    : >"$codex_logf"
-    if BT_FEATURE="$feature" BT_CODEX_LOG_FILE="$codex_logf" bt_codex_exec_full_auto "$BT_ROOT/prompts/plan-review.md"; then
-      :
-    else
-      bt_die "codex failed (plan-review)"
-    fi
-  else
-    # v0.1.0 stub
-    cat <<'EOF' > "$out"
-# Plan Review: Stub Approved
+  if ! bt_codex_available; then
+    bt_die "codex required for plan-review (set BT_CODEX_BIN to a valid codex executable or install codex)"
+  fi
 
-Verdict: APPROVED_PLAN
-EOF
-    bt_info "wrote $out"
+  bt_info "running codex (full-auto) using prompts/plan-review.md"
+  local artifacts_dir codex_logf
+  artifacts_dir="$dir/.artifacts"
+  mkdir -p "$artifacts_dir"
+  codex_logf="$artifacts_dir/codex-plan-review.log"
+  : >"$codex_logf"
+  if BT_FEATURE="$feature" BT_CODEX_LOG_FILE="$codex_logf" bt_codex_exec_full_auto "$BT_ROOT/prompts/plan-review.md" "$out"; then
+    :
+  else
+    bt_die "codex failed (plan-review)"
   fi
 
   if [[ ! -f "$out" ]]; then

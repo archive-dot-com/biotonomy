@@ -159,13 +159,19 @@ EOF
   bt_env_load || true
   bt_ensure_dirs
 
-  local feature issue
+  local feature issue url_slug
   issue=""
+  url_slug=""
   if [[ "$arg" =~ ^[0-9]+$ ]]; then
     issue="$arg"
     feature="issue-$arg"
+  elif [[ "$arg" =~ ^https?://github.com/([^/]+/[^/]+)/issues/([0-9]+) ]]; then
+    # support URL format
+    issue="${BASH_REMATCH[2]}"
+    url_slug="${BASH_REMATCH[1]}"
+    feature="issue-$issue"
   else
-    feature="$arg"
+    feature="$(bt_require_feature "$arg")"
   fi
 
   local dir
@@ -186,7 +192,11 @@ EOF
     bt__require_cmd gh
 
     local repo
-    repo="$(bt_repo_resolve "$BT_PROJECT_ROOT")"
+    if [[ -n "$url_slug" ]]; then
+      repo="$url_slug"
+    else
+      repo="$(bt_repo_resolve "$BT_PROJECT_ROOT")"
+    fi
 
     local -a gh_cmd
     gh_cmd=(gh issue view "$issue" -R "$repo" --json "title,body,url")

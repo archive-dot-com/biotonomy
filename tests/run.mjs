@@ -13,7 +13,7 @@ const bt = path.join(repoRoot, "bt.sh");
 function runBt(args, { cwd, env } = {}) {
   const res = spawnSync("bash", [bt, ...args], {
     cwd,
-    env: { ...process.env, ...(env || {}) },
+    env: { ...process.env, BT_GATE_TEST: "true", ...(env || {}) },
     encoding: "utf8",
   });
   return {
@@ -223,6 +223,16 @@ test("status gate parsing handles compact JSON without whitespace", () => {
   assert.match(res.stdout, /global:\s*\[gates:fail 2026-02-16T02:00:00Z \(test\)\]/);
 });
 
+test("status prints version from package metadata (not hardcoded 0.1.0)", () => {
+  const cwd = mkTmp();
+  const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
+
+  const res = runBt(["status"], { cwd });
+  assert.equal(res.code, 0, res.stderr);
+  assert.match(res.stdout, new RegExp(`\\bbt v${pkg.version}\\b`));
+  assert.doesNotMatch(res.stdout, /\bbt v0\.1\.0\b/);
+});
+
 test("BT_TARGET_DIR: spec writes SPEC.md under target", () => {
   const caller = mkTmp();
   const target = mkTmp();
@@ -233,6 +243,16 @@ test("BT_TARGET_DIR: spec writes SPEC.md under target", () => {
   const specPath = path.join(target, "specs", "feat-t", "SPEC.md");
   assert.ok(fs.existsSync(specPath), "target SPEC.md missing");
   assert.ok(!fs.existsSync(path.join(caller, "specs", "feat-t", "SPEC.md")), "caller SPEC.md should not be created");
+});
+
+test("spec rejects traversal feature names and does not escape specs/", () => {
+  const cwd = mkTmp();
+  const outside = path.join(cwd, "escaped");
+
+  const res = runBt(["spec", "../escaped"], { cwd });
+  assert.equal(res.code, 1, res.stdout + res.stderr);
+  assert.match(res.stderr, /invalid feature/i);
+  assert.ok(!fs.existsSync(path.join(outside, "SPEC.md")), "SPEC.md should not be created outside specs/");
 });
 
 test("implement fails when a configured gate fails", () => {
@@ -378,6 +398,66 @@ exit 0
   assert.ok(fs.existsSync(out), `PLAN_REVIEW.md missing: ${res.stdout} ${res.stderr}`);
 });
 
+test("plan-review passes -o output path to codex full-auto", () => {
+  const cwd = mkTmp();
+
+  const spec = runBt(["spec", "feat-plan-o"], { cwd });
+  assert.equal(spec.code, 0, spec.stderr);
+
+  const bin = path.join(cwd, "bin");
+  const codex = path.join(bin, "codex");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o) shift; out="$1" ;;
+  esac
+  shift || true
+done
+if [[ -z "$out" ]]; then
+  echo "missing -o" >&2
+  exit 1
+fi
+mkdir -p "$(dirname "$out")"
+printf '%s\n' "# Plan Review from -o stub" "Verdict: APPROVED_PLAN" > "$out"
+exit 0
+`
+  );
+
+  const res = runBt(["plan-review", "feat-plan-o"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stdout + res.stderr);
+
+  const out = path.join(cwd, "specs", "feat-plan-o", "PLAN_REVIEW.md");
+  assert.ok(fs.existsSync(out), `PLAN_REVIEW.md missing: ${res.stdout} ${res.stderr}`);
+});
+
+test("plan-review fails hard when codex is unavailable and does not write approved plan review", () => {
+  const cwd = mkTmp();
+
+  const spec = runBt(["spec", "feat-plan-missing-codex"], { cwd });
+  assert.equal(spec.code, 0, spec.stderr);
+
+  const out = path.join(cwd, "specs", "feat-plan-missing-codex", "PLAN_REVIEW.md");
+  const res = runBt(["plan-review", "feat-plan-missing-codex"], {
+    cwd,
+    env: { BT_CODEX_BIN: "codex-missing-bin-for-test" },
+  });
+
+  assert.notEqual(res.code, 0, res.stdout + res.stderr);
+  assert.match(res.stderr, /codex/i);
+
+  if (fs.existsSync(out)) {
+    const content = fs.readFileSync(out, "utf8");
+    assert.doesNotMatch(content, /Verdict:\s*(APPROVE_PLAN|APPROVED_PLAN)/i);
+  }
+});
+
 test("implement hard-fails without approved PLAN_REVIEW verdict", () => {
     const cwd = mkTmp();
 
@@ -491,6 +571,13 @@ test("loop validates --max-iterations as a positive integer", () => {
   const res = runBt(["loop", "feat-loop-invalid-max", "--max-iterations", "nope"], { cwd });
   assert.equal(res.code, 2, res.stdout + res.stderr);
   assert.match(res.stderr, /--max-iterations.*positive integer/i);
+});
+
+test("loop rejects traversal feature names", () => {
+  const cwd = mkTmp();
+  const res = runBt(["loop", "../escaped", "--max-iterations", "1"], { cwd });
+  assert.equal(res.code, 1, res.stdout + res.stderr);
+  assert.match(res.stderr, /invalid feature/i);
 });
 
 test("loop persists per-iteration history and deterministic progress artifact", () => {
@@ -1091,6 +1178,13 @@ test("notify hook is invoked when BT_NOTIFY_HOOK is set", () => {
   assert.ok(fs.existsSync(out), "hook output missing");
   const content = fs.readFileSync(out, "utf8");
   assert.match(content, /bt bootstrap complete/i);
+});
+
+test("pr rejects traversal feature names", () => {
+  const cwd = mkTmp();
+  const res = runBt(["pr", "../escaped", "--dry-run", "--no-commit"], { cwd });
+  assert.equal(res.code, 1, res.stdout + res.stderr);
+  assert.match(res.stderr, /invalid feature/i);
 });
 
 test("pr (dry-run): prints expanded gh argv and resolved base branch (stubs git/npm)", () => {
@@ -1732,6 +1826,32 @@ test("loop (non-auto): implement/fix return non-zero when gates fail", () => {
 
     assert.equal(res.code, 1, "loop should exit 1 when preflight gates fail");
     assert.match(res.stderr, /preflight gates failed/i);
+});
+
+test("issue #31: audit umbrella issue template exists", () => {
+  const templatePath = path.join(repoRoot, ".github", "ISSUE_TEMPLATE", "audit-umbrella.md");
+  assert.ok(fs.existsSync(templatePath), `missing template: ${templatePath}`);
+});
+
+test("issue #31: audit umbrella template enforces receipts and unresolved sections", () => {
+  const templatePath = path.join(repoRoot, ".github", "ISSUE_TEMPLATE", "audit-umbrella.md");
+  const content = fs.readFileSync(templatePath, "utf8");
+
+  assert.match(content, /^name:\s*Audit Umbrella/m);
+  assert.match(content, /^about:\s*Umbrella issue for claim-by-claim audit closure/m);
+  assert.match(content, /^##\s+Required Closure Checklist/m);
+  assert.match(content, /^-\s+\[ \]\s+Claim-by-claim receipts table completed/m);
+  assert.match(content, /^-\s+\[ \]\s+Unresolved claims list completed \(or explicitly none\)/m);
+  assert.match(content, /^##\s+Claim-by-Claim Receipts/m);
+  assert.match(content, /^\|\s*Claim ID\s*\|\s*Receipt Link\(s\)\s*\|\s*Evidence Summary\s*\|/m);
+  assert.match(content, /^##\s+Unresolved Claims/m);
+  assert.match(content, /^-\s+\[ \]\s+None$/m);
+});
+
+test("loop.sh avoids unused preflight gate_args variable (SC2034 regression)", () => {
+  const loopPath = path.join(repoRoot, "commands", "loop.sh");
+  const content = fs.readFileSync(loopPath, "utf8");
+  assert.doesNotMatch(content, /local\s+-a\s+gate_args=\(\)/, "loop.sh should not declare unused gate_args array");
 });
 
 if (process.exitCode) process.exit(process.exitCode);
