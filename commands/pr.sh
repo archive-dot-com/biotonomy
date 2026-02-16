@@ -191,11 +191,12 @@ bt_cmd_pr() {
   # 2. Fail-loud preflight for unstaged expected files (before tests/commit flow).
   if [[ "$commit" == "1" ]]; then
     local unstaged=""
+    local check_paths=(tests lib commands scripts specs prompts) # Added specs and prompts
     if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-      unstaged="$(git ls-files --others --modified --exclude-standard -- tests lib commands scripts 2>/dev/null || true)"
+      unstaged="$(git ls-files --others --modified --exclude-standard -- "${check_paths[@]}" 2>/dev/null || true)"
     else
       # Outside a git repo, treat present implementation files as unstaged by definition.
-      unstaged="$(find tests lib commands scripts -type f 2>/dev/null | LC_ALL=C sort || true)"
+      unstaged="$(find "${check_paths[@]}" -type f 2>/dev/null | LC_ALL=C sort || true)"
     fi
     if [[ -n "$unstaged" ]]; then
       bt_err "Found unstaged files that might be required for this feature:"
@@ -255,7 +256,8 @@ bt_cmd_pr() {
   if [[ "$commit" == "1" ]]; then
     bt_info "committing changes..."
     local unstaged
-    unstaged="$(git status --porcelain -- tests lib commands scripts 2>/dev/null || true)"
+    local check_paths=(tests lib commands scripts specs prompts)
+    unstaged="$(git status --porcelain -- "${check_paths[@]}" 2>/dev/null || true)"
     if [[ -n "$unstaged" ]]; then
       bt_err "Found unstaged files that might be required for this feature:"
       printf '%s\n' "$unstaged" >&2
