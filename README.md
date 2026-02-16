@@ -2,7 +2,7 @@
 
 Biotonomy is a CLI that runs Codex loops (research→implement→review→fix) inside your repo.
 It enforces quality gates (lint/typecheck/test) between stages and records everything as files.
-PR automation is next: the repo has an opt-in `gh` helper today, and first-class PR flows are planned.
+PR automation is now first-class (`bt pr` / `bt ship`) and keeps deterministic artifacts for every run.
 
 Biotonomy is intentionally file-based:
 - project config lives in `.bt.env`
@@ -57,11 +57,11 @@ bt fix archie
 bt status
 ```
 
-TODOs and tracked work:
-- Deterministic end-to-end loop runner + offline stubs: [Issue #3](https://github.com/archive-dot-com/biotonomy/issues/3)
-- Make implement/review/fix tighter as an explicit "repeat until APPROVE + gates pass" loop: [Issue #4](https://github.com/archive-dot-com/biotonomy/issues/4), [Issue #5](https://github.com/archive-dot-com/biotonomy/issues/5), [Issue #6](https://github.com/archive-dot-com/biotonomy/issues/6)
-- Harden/expand quality gates and configuration: [Issue #7](https://github.com/archive-dot-com/biotonomy/issues/7)
-- First-class PR automation (not just a script): [Issue #8](https://github.com/archive-dot-com/biotonomy/issues/8)
+Tracked work (open issues):
+- Core loop expansion (`bt loop` style driver and polish): [Issue #10](https://github.com/archive-dot-com/biotonomy/issues/10), [Issue #3](https://github.com/archive-dot-com/biotonomy/issues/3)
+- Release readiness and publish workflow (`npm i -g biotonomy`): [Issue #7](https://github.com/archive-dot-com/biotonomy/issues/7)
+- Docs refresh for Archie walkthrough and current commands: [Issue #8](https://github.com/archive-dot-com/biotonomy/issues/8), [Issue #1](https://github.com/archive-dot-com/biotonomy/issues/1)
+- Reliability hardening and bugfixes: [Issues #13-#17](https://github.com/archive-dot-com/biotonomy/issues)
 
 ## Artifacts And Layout
 
@@ -168,13 +168,13 @@ Implemented today:
 - `bt research` requires Codex (it dies early if `codex` is not available)
 - Opt-in PR helper (`npm run pr:open`) with `--dry-run` by default
 
-In progress (tracked in issues):
-- [Issue #3](https://github.com/archive-dot-com/biotonomy/issues/3): core loop demo harness + deterministic runner
-- [Issue #4](https://github.com/archive-dot-com/biotonomy/issues/4): implement stage reliability and repeatability
-- [Issue #5](https://github.com/archive-dot-com/biotonomy/issues/5): review stage contract and enforcement
-- [Issue #6](https://github.com/archive-dot-com/biotonomy/issues/6): fix stage iteration (close the loop from REVIEW.md back to green gates)
-- [Issue #7](https://github.com/archive-dot-com/biotonomy/issues/7): quality gates (auto-detect, reporting, policy)
-- [Issue #8](https://github.com/archive-dot-com/biotonomy/issues/8): PR automation (first-class workflows)
+In progress (tracked in open issues):
+- [Issue #10](https://github.com/archive-dot-com/biotonomy/issues/10): add a first-class loop driver (implement→review→fix until APPROVE + gates pass)
+- [Issue #3](https://github.com/archive-dot-com/biotonomy/issues/3): complete Codex-native loop ergonomics
+- [Issue #7](https://github.com/archive-dot-com/biotonomy/issues/7): publish workflow + npm readiness
+- [Issue #8](https://github.com/archive-dot-com/biotonomy/issues/8): docs rewrite around Codex loop + Archie walkthrough
+- [Issue #12](https://github.com/archive-dot-com/biotonomy/issues/12): close stale “already done” tracker issues
+- [Issues #13-#17](https://github.com/archive-dot-com/biotonomy/issues): active bugfix queue
 
 ## Development
 
