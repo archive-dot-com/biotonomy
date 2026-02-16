@@ -1568,4 +1568,27 @@ exit 0
   assert.equal(progress.iterations[1].fixStatus, "SKIP");
 });
 
+test("loop (non-auto): implement/fix return non-zero when gates fail", () => {
+    const cwd = mkTmp();
+    runBt(["spec", "feat-loop-gate-fail"], { cwd });
+    writeFile(path.join(cwd, "specs", "feat-loop-gate-fail", "PLAN_REVIEW.md"), "Verdict: APPROVED_PLAN\n");
+
+    const bin = path.join(cwd, "bin");
+    const codex = path.join(bin, "codex");
+    writeExe(codex, `#!/usr/bin/env bash\nexit 0\n`);
+
+    const npm = path.join(bin, "npm");
+    writeExe(npm, `#!/usr/bin/env bash\nexit 1\n`);
+
+    writeFile(path.join(cwd, ".bt.env"), `BT_GATE_TEST=${npm} test\n`);
+
+    const res = runBt(["loop", "feat-loop-gate-fail", "--max-iterations", "1"], {
+        cwd,
+        env: { PATH: `${bin}:${process.env.PATH}`, BT_GATE_TEST: "true", BT_GATE_LINT: "true", BT_GATE_TYPECHECK: "true" }
+    });
+
+    assert.equal(res.code, 1, "loop should exit 1 when preflight gates fail");
+    assert.match(res.stderr, /preflight gates failed/i);
+});
+
 if (process.exitCode) process.exit(process.exitCode);
