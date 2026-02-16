@@ -1189,4 +1189,87 @@ test("ship/pr fail-loud: should NOT attempt git add automatically", () => {
   assert.match(statusRes.stdout, /^\?\? /, "File should remain untracked (??)");
 });
 
+test("issue #10: loop gate sequencing (implement->review; NEEDS_CHANGES->fix->implement->review) relying on internal gates", () => {
+  const cwd = mkTmp();
+  const spec = runBt(["spec", "feat-seq"], { cwd });
+  assert.equal(spec.code, 0, spec.stderr);
+
+  const events = path.join(cwd, "call-order.log");
+  const bin = path.join(cwd, "bin");
+  const npm = path.join(bin, "npm");
+  writeExe(
+    npm,
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "npm:$*" >> ${JSON.stringify(events)}
+exit 0
+`
+  );
+  const codex = path.join(bin, "codex");
+  const reviewCountFile = path.join(cwd, "review.count");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+logf="\${BT_CODEX_LOG_FILE:-}"
+kind="$(basename "$logf" .log | sed 's/^codex-//')"
+printf '%s\\n' "codex:$kind" >> ${JSON.stringify(events)}
+
+if [[ "$kind" == "review" ]]; then
+  out=""
+  args=("$@")
+  for ((i=0; i<\${#args[@]}; i++)); do
+    if [[ "\${args[i]}" == "-o" ]]; then
+      out="\${args[i+1]}"
+    fi
+  done
+  if [[ -n "$out" ]]; then
+    c=0
+    [[ -f ${JSON.stringify(reviewCountFile)} ]] && c=$(cat ${JSON.stringify(reviewCountFile)})
+    c=$((c+1))
+    echo "$c" > ${JSON.stringify(reviewCountFile)}
+    if [[ "$c" -eq 1 ]]; then
+      printf 'Verdict: NEEDS_CHANGES\\n' > "$out"
+    else
+      printf 'Verdict: APPROVED\\n' > "$out"
+    fi
+  fi
+fi
+`
+  );
+
+  const envFile = path.join(cwd, ".bt.env");
+  writeFile(
+    envFile,
+    [
+      `BT_GATE_TEST=${npm} test`,
+      "",
+    ].join("\n")
+  );
+
+  const res = runBt(["loop", "feat-seq", "--max-iterations", "3"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stdout + res.stderr);
+
+  const lines = fs.readFileSync(events, "utf8").trim().split("\n").filter(Boolean);
+  
+  const expected = [
+    "npm:test",       // preflight
+    "codex:implement",
+    "npm:test",       // internal to bt implement
+    "codex:review",
+    "npm:test",       // convergence check in loop after review
+    "codex:fix",
+    "npm:test",       // internal to bt fix
+    "codex:implement",
+    "npm:test",       // internal to bt implement
+    "codex:review",
+    "npm:test"        // final convergence check
+  ];
+  
+  assert.deepEqual(lines, expected, `Incomplete or wrong sequence: ${lines.join(" -> ")}`);
+});
+
 if (process.exitCode) process.exit(process.exitCode);
