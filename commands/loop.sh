@@ -59,15 +59,6 @@ bt_cmd_loop() {
   bt_env_load || true
   bt_ensure_dirs
 
-  bt_info "starting loop for: $feature (max iterations: $max_iter)"
-
-  bt_info "running preflight gates..."
-  if ! bt_run_gates; then
-    bt_err "preflight gates failed; aborting before implement/review"
-    return 1
-  fi
-  bt_info "preflight gates: PASS"
-
   local feat_dir
   feat_dir="$(bt_feature_dir "$feature")"
   local plan_review="$feat_dir/PLAN_REVIEW.md"
@@ -76,6 +67,15 @@ bt_cmd_loop() {
     bt_err "run: bt plan-review $feature"
     bt_die "loop hard-fails without approved PLAN_REVIEW verdict before implement/review"
   fi
+
+  bt_info "starting loop for: $feature (max iterations: $max_iter)"
+
+  bt_info "running preflight gates..."
+  if ! bt_run_gates; then
+    bt_err "preflight gates failed; aborting before implement/review"
+    return 1
+  fi
+  bt_info "preflight gates: PASS"
 
   # Source required commands so we can call them directly
   # shellcheck source=/dev/null
