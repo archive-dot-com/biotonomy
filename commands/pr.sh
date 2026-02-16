@@ -161,6 +161,7 @@ bt_cmd_pr() {
     bt_err "feature name is required"
     return 2
   fi
+  feature="$(bt_require_feature "$feature")"
 
   # Ensure BT_PROJECT_ROOT reflects BT_TARGET_DIR / BT_ENV_FILE, and operate within it.
   bt_env_load || true

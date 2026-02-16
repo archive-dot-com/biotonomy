@@ -235,6 +235,16 @@ test("BT_TARGET_DIR: spec writes SPEC.md under target", () => {
   assert.ok(!fs.existsSync(path.join(caller, "specs", "feat-t", "SPEC.md")), "caller SPEC.md should not be created");
 });
 
+test("spec rejects traversal feature names and does not escape specs/", () => {
+  const cwd = mkTmp();
+  const outside = path.join(cwd, "escaped");
+
+  const res = runBt(["spec", "../escaped"], { cwd });
+  assert.equal(res.code, 1, res.stdout + res.stderr);
+  assert.match(res.stderr, /invalid feature/i);
+  assert.ok(!fs.existsSync(path.join(outside, "SPEC.md")), "SPEC.md should not be created outside specs/");
+});
+
 test("implement fails when a configured gate fails", () => {
     const cwd = mkTmp();
 
@@ -491,6 +501,13 @@ test("loop validates --max-iterations as a positive integer", () => {
   const res = runBt(["loop", "feat-loop-invalid-max", "--max-iterations", "nope"], { cwd });
   assert.equal(res.code, 2, res.stdout + res.stderr);
   assert.match(res.stderr, /--max-iterations.*positive integer/i);
+});
+
+test("loop rejects traversal feature names", () => {
+  const cwd = mkTmp();
+  const res = runBt(["loop", "../escaped", "--max-iterations", "1"], { cwd });
+  assert.equal(res.code, 1, res.stdout + res.stderr);
+  assert.match(res.stderr, /invalid feature/i);
 });
 
 test("loop persists per-iteration history and deterministic progress artifact", () => {
@@ -1091,6 +1108,13 @@ test("notify hook is invoked when BT_NOTIFY_HOOK is set", () => {
   assert.ok(fs.existsSync(out), "hook output missing");
   const content = fs.readFileSync(out, "utf8");
   assert.match(content, /bt bootstrap complete/i);
+});
+
+test("pr rejects traversal feature names", () => {
+  const cwd = mkTmp();
+  const res = runBt(["pr", "../escaped", "--dry-run", "--no-commit"], { cwd });
+  assert.equal(res.code, 1, res.stdout + res.stderr);
+  assert.match(res.stderr, /invalid feature/i);
 });
 
 test("pr (dry-run): prints expanded gh argv and resolved base branch (stubs git/npm)", () => {

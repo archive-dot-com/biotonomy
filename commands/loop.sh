@@ -56,6 +56,8 @@ bt_cmd_loop() {
     return 2
   fi
 
+  feature="$(bt_require_feature "$feature")"
+
   bt_env_load || true
   bt_ensure_dirs
 

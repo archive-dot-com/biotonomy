@@ -165,7 +165,7 @@ EOF
     issue="$arg"
     feature="issue-$arg"
   else
-    feature="$arg"
+    feature="$(bt_require_feature "$arg")"
   fi
 
   local dir
