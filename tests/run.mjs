@@ -1754,4 +1754,10 @@ test("issue #31: audit umbrella template enforces receipts and unresolved sectio
   assert.match(content, /^-\s+\[ \]\s+None$/m);
 });
 
+test("loop.sh avoids unused preflight gate_args variable (SC2034 regression)", () => {
+  const loopPath = path.join(repoRoot, "commands", "loop.sh");
+  const content = fs.readFileSync(loopPath, "utf8");
+  assert.doesNotMatch(content, /local\s+-a\s+gate_args=\(\)/, "loop.sh should not declare unused gate_args array");
+});
+
 if (process.exitCode) process.exit(process.exitCode);
