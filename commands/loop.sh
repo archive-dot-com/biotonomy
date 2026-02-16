@@ -76,7 +76,7 @@ bt_cmd_loop() {
   fi
 
   bt_info "running preflight gates..."
-  if ! bt_run_gates --require-any; then
+  if ! bt_run_gates "${gate_args[@]+"${gate_args[@]}"}"; then
     bt_err "preflight gates failed (or none configured); aborting before implement/review"
     return 1
   fi
