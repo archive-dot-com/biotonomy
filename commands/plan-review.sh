@@ -36,7 +36,7 @@ EOF
     mkdir -p "$artifacts_dir"
     codex_logf="$artifacts_dir/codex-plan-review.log"
     : >"$codex_logf"
-    if BT_FEATURE="$feature" BT_CODEX_LOG_FILE="$codex_logf" bt_codex_exec_full_auto "$BT_ROOT/prompts/plan-review.md"; then
+    if BT_FEATURE="$feature" BT_CODEX_LOG_FILE="$codex_logf" bt_codex_exec_full_auto "$BT_ROOT/prompts/plan-review.md" "$out"; then
       :
     else
       bt_die "codex failed (plan-review)"

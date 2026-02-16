@@ -388,6 +388,45 @@ exit 0
   assert.ok(fs.existsSync(out), `PLAN_REVIEW.md missing: ${res.stdout} ${res.stderr}`);
 });
 
+test("plan-review passes -o output path to codex full-auto", () => {
+  const cwd = mkTmp();
+
+  const spec = runBt(["spec", "feat-plan-o"], { cwd });
+  assert.equal(spec.code, 0, spec.stderr);
+
+  const bin = path.join(cwd, "bin");
+  const codex = path.join(bin, "codex");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o) shift; out="$1" ;;
+  esac
+  shift || true
+done
+if [[ -z "$out" ]]; then
+  echo "missing -o" >&2
+  exit 1
+fi
+mkdir -p "$(dirname "$out")"
+printf '%s\n' "# Plan Review from -o stub" "Verdict: APPROVED_PLAN" > "$out"
+exit 0
+`
+  );
+
+  const res = runBt(["plan-review", "feat-plan-o"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stdout + res.stderr);
+
+  const out = path.join(cwd, "specs", "feat-plan-o", "PLAN_REVIEW.md");
+  assert.ok(fs.existsSync(out), `PLAN_REVIEW.md missing: ${res.stdout} ${res.stderr}`);
+});
+
 test("implement hard-fails without approved PLAN_REVIEW verdict", () => {
     const cwd = mkTmp();
 

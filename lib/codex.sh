@@ -11,6 +11,7 @@ bt_codex_available() {
 
 bt_codex_exec_full_auto() {
   local prompt_file="$1"
+  local out_file="${2:-}"
   if ! bt_codex_available; then
     bt_warn "codex not found; skipping (set BT_CODEX_BIN or install codex)"
     return 0
@@ -19,7 +20,15 @@ bt_codex_exec_full_auto() {
   bin="$(bt_codex_bin)"
   local log_file
   log_file="${BT_CODEX_LOG_FILE:-/dev/null}"
-  "$bin" exec --full-auto -C "$BT_PROJECT_ROOT" "$(cat "$prompt_file")" 2>&1 | tee -a "$log_file"
+
+  local -a args
+  args=(exec --full-auto -C "$BT_PROJECT_ROOT")
+  if [[ -n "$out_file" ]]; then
+    args+=(-o "$out_file")
+  fi
+  args+=("$(cat "$prompt_file")")
+
+  "$bin" "${args[@]}" 2>&1 | tee -a "$log_file"
   return "${PIPESTATUS[0]}"
 }
 
