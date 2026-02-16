@@ -257,18 +257,7 @@ bt_cmd_pr() {
     # Add SPEC.md and any tests/implementations related to this feature
     # We use explicit paths to avoid staging unrelated items
     local paths_to_add=()
-    [[ -d "$specs_dir/$feature" ]] && paths_to_add+=("$specs_dir/$feature")
-    # check for specific files from SPEC if possible, otherwise rely on broad dirs
-    [[ -d "tests" ]] && paths_to_add+=("tests")
-    [[ -d "lib" ]] && paths_to_add+=("lib")
-    [[ -d "commands" ]] && paths_to_add+=("commands")
-    [[ -d "scripts" ]] && paths_to_add+=("scripts")
-    
-    if [[ ${#paths_to_add[@]} -gt 0 ]]; then
-       git add "${paths_to_add[@]}"
-    fi
-
-    local unstaged
+        local unstaged
     unstaged="$(git status --porcelain -- tests lib commands scripts 2>/dev/null || true)"
     if [[ -n "$unstaged" ]]; then
       bt_err "Found unstaged files that might be required for this feature:"

@@ -999,4 +999,45 @@ exit 1
   assert.ok(res.stderr.includes("codex failed (review), stopping"), "should fail loud");
 });
 
+test("ship (alias of pr) also fails loud when required files are unstaged", () => {
+  const cwd = mkTmp();
+  runBt(["bootstrap"], { cwd });
+  runBt(["spec", "feat-unstaged-ship"], { cwd });
+
+  const git = spawnSync("bash", ["-lc", "git init -q"], { cwd, encoding: "utf8" });
+  assert.equal(git.status, 0, git.stderr);
+
+  // Create an implementation file but don't add it.
+  const libDir = path.join(cwd, "lib");
+  fs.mkdirSync(libDir, { recursive: true });
+  fs.writeFileSync(path.join(libDir, "index.mjs"), "export const x = 1;");
+
+  const res = runBt(["ship", "feat-unstaged-ship", "--dry-run"], { cwd });
+
+  assert.equal(res.code, 1, "ship should exit 1 on unstaged files");
+  assert.ok(res.stderr.includes("Abort: ship requires all feature files to be staged"), "missing abort message");
+  assert.ok(res.stderr.includes("lib/index.mjs"), "should list the unstaged file");
+});
+
+test("ship/pr fail-loud: should NOT attempt git add automatically", () => {
+  const cwd = mkTmp();
+  runBt(["bootstrap"], { cwd });
+  const git = spawnSync("bash", ["-lc", "git init -q"], { cwd, encoding: "utf8" });
+  assert.equal(git.status, 0);
+  
+  const testFile = path.join(cwd, "tests", "fail-loud-test.mjs");
+  fs.mkdirSync(path.dirname(testFile), { recursive: true });
+  fs.writeFileSync(testFile, "test");
+  
+  // We expect it to FAIL because files are unstaged, and it should NOT add them.
+  // Note: runBt uses -lc bash which might have different env, ensure git works.
+  const res = runBt(["ship", "fail-loud-feat", "--run"], { cwd });
+  assert.equal(res.code, 1, "Should exit with error code 1");
+  assert.match(res.stderr, /Found unstaged files/, "Should report unstaged files");
+  
+  // Verify it didn't add them (should still be UNTRACKED/UNSTAGED)
+  const statusRes = spawnSync("git", ["status", "--porcelain", "tests/fail-loud-test.mjs"], { cwd, encoding: "utf8" });
+  assert.match(statusRes.stdout, /^\?\? /, "File should remain untracked (??)");
+});
+
 if (process.exitCode) process.exit(process.exitCode);
