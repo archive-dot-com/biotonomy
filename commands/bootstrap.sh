@@ -15,6 +15,14 @@ EOF
   # Operate within the effective project root (BT_TARGET_DIR if set).
   local root="${BT_PROJECT_ROOT:-$PWD}"
 
+  local critical_dir
+  for critical_dir in "specs" ".bt" "hooks"; do
+    local critical_path="$root/$critical_dir"
+    if [[ -e "$critical_path" && ! -d "$critical_path" ]]; then
+      bt_die "critical scaffold path exists as a file: $critical_path"
+    fi
+  done
+
   local env_path="$root/.bt.env"
   if [[ -f "$env_path" ]]; then
     bt_info "found existing .bt.env"

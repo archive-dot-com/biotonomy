@@ -70,6 +70,18 @@ test("bootstrap creates .bt.env and folders", () => {
   assert.ok(fs.existsSync(path.join(cwd, "hooks")));
 });
 
+test("bootstrap fails loud before mkdir when critical scaffold path is a file", () => {
+  const cwd = mkTmp();
+  writeFile(path.join(cwd, ".bt"), "not a dir");
+
+  const res = runBt(["bootstrap"], { cwd });
+  assert.equal(res.code, 1, res.stdout + res.stderr);
+  assert.match(res.stderr, /critical scaffold path exists as a file: .*\/\.bt/i);
+
+  assert.ok(!fs.existsSync(path.join(cwd, "specs")), "specs/ should not be created");
+  assert.ok(!fs.existsSync(path.join(cwd, "hooks")), "hooks/ should not be created");
+});
+
 test("BT_TARGET_DIR: bootstrap writes .bt.env/specs/.bt/hooks inside target (not caller cwd)", () => {
   const caller = mkTmp();
   const target = mkTmp();
