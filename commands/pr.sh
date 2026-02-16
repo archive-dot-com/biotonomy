@@ -196,6 +196,7 @@ bt_cmd_pr() {
     # We use explicit paths to avoid staging unrelated items
     local paths_to_add=()
     [[ -d "$specs_dir/$feature" ]] && paths_to_add+=("$specs_dir/$feature")
+    # check for specific files from SPEC if possible, otherwise rely on broad dirs
     [[ -d "tests" ]] && paths_to_add+=("tests")
     [[ -d "lib" ]] && paths_to_add+=("lib")
     [[ -d "commands" ]] && paths_to_add+=("commands")
@@ -203,6 +204,14 @@ bt_cmd_pr() {
     
     if [[ ${#paths_to_add[@]} -gt 0 ]]; then
        git add "${paths_to_add[@]}"
+    fi
+
+    local unstaged
+    unstaged="$(git status --porcelain | grep -v ' ' | grep '^??' || true)"
+    if [[ -n "$unstaged" ]]; then
+      bt_err "Found unstaged files that might be required for this feature:"
+      printf '%s\n' "$unstaged" >&2
+      bt_die "Abort: ship requires all feature files to be staged. Use git add and try again."
     fi
 
     if ! git diff --cached --quiet; then
