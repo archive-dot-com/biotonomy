@@ -115,6 +115,32 @@ test("--target: can appear after subcommand and is stripped before subcommand pa
   assert.ok(!fs.existsSync(path.join(caller, ".bt.env")), "caller .bt.env should not be created");
 });
 
+test("bt_realpath fallback normalizes relative paths when realpath/python3 are unavailable", () => {
+  const cwd = mkTmp();
+  const nested = path.join(cwd, "a", "b");
+  fs.mkdirSync(path.join(cwd, "a", "target"), { recursive: true });
+  fs.mkdirSync(nested, { recursive: true });
+
+  const fakeBin = path.join(cwd, "fake-bin");
+  fs.mkdirSync(fakeBin, { recursive: true });
+  fs.symlinkSync("/bin/bash", path.join(fakeBin, "bash"));
+
+  const res = spawnSync(
+    "/bin/bash",
+    [
+      "-c",
+      `source "${path.join(repoRoot, "lib", "path.sh")}"; cd "${nested}"; bt_realpath "../target/./artifact.txt"`,
+    ],
+    {
+      env: { ...process.env, PATH: fakeBin },
+      encoding: "utf8",
+    }
+  );
+
+  assert.equal(res.status, 0, res.stderr || "bt_realpath invocation failed");
+  assert.equal(res.stdout.trim(), path.join(cwd, "a", "target", "artifact.txt"));
+});
+
 test("env loading (BT_SPECS_DIR) affects status output", () => {
   const cwd = mkTmp();
   writeFile(
