@@ -52,6 +52,7 @@ test("help works", () => {
   const res = runBt(["--help"]);
   assert.equal(res.code, 0);
   assert.match(res.stdout + res.stderr, /biotonomy \(bt\)/);
+  assert.match(res.stdout + res.stderr, /\bplan-review\b/);
 });
 
 test("launcher works when invoked via symlinked node_modules/.bin/bt path", () => {

@@ -50,7 +50,7 @@ Usage:
   bt [--target <path>] <command> [args]
 
 Commands:
-  bootstrap  spec  research  implement  review  fix  loop  compound  design  status  gates  reset  pr  ship
+  bootstrap  spec  research  plan-review  implement  review  fix  loop  compound  design  status  gates  reset  pr  ship
 
 Global options:
   -h, --help     Show help
