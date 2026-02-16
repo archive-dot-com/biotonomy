@@ -92,6 +92,7 @@ EOF
     bt_info "--- Iteration $iter / $max_iter ---"
 
     # 1. Run Implement on every iteration
+    # Note: bt_cmd_implement already runs gates internally.
     bt_info "running implement..."
     if bt_cmd_implement "$feature"; then
       :
@@ -135,7 +136,10 @@ PY
     verdict="$(awk '/^Verdict:/{print toupper($2); exit}' "$review_file" | tr -d '\r' || true)"
     bt_info "verdict: $verdict"
 
-    # 4. Check Gates
+    # 4. Final Gate Check for convergence
+    # We use the gates result from the last command that ran them (implement/fix).
+    # bt_cmd_implement/fix return non-zero if gates fail, but we capture the status.
+    # We call bt_run_gates here just to be sure of the final state post-review.
     local gates_ok=1
     if ! bt_run_gates; then
       gates_ok=0
@@ -177,6 +181,7 @@ PY
 
     if [[ "$verdict" == "NEEDS_CHANGES" ]]; then
       bt_info "running fix..."
+      # Note: bt_cmd_fix already runs gates internally.
       if bt_cmd_fix "$feature"; then
         :
       else
