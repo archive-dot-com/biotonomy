@@ -49,6 +49,13 @@ bt_cmd_loop() {
 
   bt_info "starting loop for: $feature (max iterations: $max_iter)"
 
+  bt_info "running preflight gates..."
+  if ! bt_run_gates; then
+    bt_err "preflight gates failed; aborting before implement/review"
+    return 1
+  fi
+  bt_info "preflight gates: PASS"
+
   # Source required commands so we can call them directly
   # shellcheck source=/dev/null
   source "$BT_ROOT/commands/implement.sh"

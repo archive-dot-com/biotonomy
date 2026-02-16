@@ -404,6 +404,114 @@ exit 0
   assert.ok(historyFiles.some((f) => f.endsWith("-loop-iter-002.md")), "missing loop iter 2 history");
 });
 
+test("loop runs preflight gates before first implement iteration (stub npm + codex call-order log)", () => {
+  const cwd = mkTmp();
+  const spec = runBt(["spec", "feat-loop-preflight"], { cwd });
+  assert.equal(spec.code, 0, spec.stderr);
+
+  const events = path.join(cwd, "call-order.log");
+  const bin = path.join(cwd, "bin");
+  const npm = path.join(bin, "npm");
+  writeExe(
+    npm,
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "npm:$*" >> ${JSON.stringify(events)}
+exit 0
+`
+  );
+  const codex = path.join(bin, "codex");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "codex:$*" >> ${JSON.stringify(events)}
+out=""
+args=("$@")
+for ((i=0; i<\${#args[@]}; i++)); do
+  if [[ "\${args[i]}" == "-o" ]]; then
+    out="\${args[i+1]}"
+  fi
+done
+if [[ -n "$out" ]]; then
+  printf 'Verdict: APPROVED\\n' > "$out"
+fi
+`
+  );
+
+  const envFile = path.join(cwd, ".bt.env");
+  writeFile(
+    envFile,
+    [
+      `BT_GATE_LINT=${npm} run lint`,
+      `BT_GATE_TYPECHECK=${npm} run typecheck`,
+      `BT_GATE_TEST=${npm} test`,
+      "",
+    ].join("\n")
+  );
+
+  const res = runBt(["loop", "feat-loop-preflight", "--max-iterations", "1"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stdout + res.stderr);
+
+  assert.ok(fs.existsSync(events), "missing call-order.log");
+  const lines = fs.readFileSync(events, "utf8").trim().split("\n").filter(Boolean);
+  assert.ok(lines.length >= 2, "expected at least one gate and one codex event");
+  assert.match(lines[0], /^npm:/, `first call should be preflight gate via npm, got: ${lines[0] || "<none>"}`);
+  assert.ok(lines.some((line) => line.startsWith("codex:")), "expected codex invocation");
+});
+
+test("BT_TARGET_DIR: loop writes review/progress/history artifacts under target", () => {
+  const caller = mkTmp();
+  const target = mkTmp();
+
+  const spec = runBt(["spec", "feat-loop-target"], {
+    cwd: caller,
+    env: { BT_TARGET_DIR: target },
+  });
+  assert.equal(spec.code, 0, spec.stderr);
+
+  const bin = path.join(caller, "bin");
+  const codex = path.join(bin, "codex");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+out=""
+args=("$@")
+for ((i=0; i<\${#args[@]}; i++)); do
+  if [[ "\${args[i]}" == "-o" ]]; then
+    out="\${args[i+1]}"
+  fi
+done
+if [[ -n "$out" ]]; then
+  printf 'Verdict: APPROVED\\n' > "$out"
+fi
+`
+  );
+
+  const res = runBt(["loop", "feat-loop-target"], {
+    cwd: caller,
+    env: { BT_TARGET_DIR: target, PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stdout + res.stderr);
+
+  const targetFeatureDir = path.join(target, "specs", "feat-loop-target");
+  assert.ok(fs.existsSync(path.join(targetFeatureDir, "REVIEW.md")), "target REVIEW.md missing");
+  assert.ok(fs.existsSync(path.join(targetFeatureDir, "loop-progress.json")), "target loop-progress.json missing");
+  assert.ok(fs.existsSync(path.join(targetFeatureDir, "history")), "target history/ missing");
+  assert.ok(
+    fs.readdirSync(path.join(targetFeatureDir, "history")).some((f) => f.endsWith("-loop-iter-001.md")),
+    "target history should contain loop iteration artifact"
+  );
+
+  const callerFeatureDir = path.join(caller, "specs", "feat-loop-target");
+  assert.ok(!fs.existsSync(path.join(callerFeatureDir, "REVIEW.md")), "caller REVIEW.md should not be created");
+  assert.ok(!fs.existsSync(path.join(callerFeatureDir, "loop-progress.json")), "caller loop-progress.json should not be created");
+});
+
 test("command routing: each command --help exits 0", () => {
   const cmds = [
     "bootstrap",
