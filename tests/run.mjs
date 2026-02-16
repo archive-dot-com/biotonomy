@@ -987,6 +987,31 @@ test("gates behavior: writes global or feature gates.json with detailed JSON", (
   assert.equal(data2.results.lint.status, 0);
 });
 
+test("gates JSON stays valid when gate command has quotes and backslashes", () => {
+  const cwd = mkTmp();
+  const cmdWithEscapes = `printf "path \\\\tmp\\\\x and quote \\"ok\\"" >/dev/null`;
+  writeFile(
+    path.join(cwd, ".bt.env"),
+    [
+      "BT_SPECS_DIR=specs",
+      "BT_STATE_DIR=.bt",
+      "BT_GATE_LINT=true",
+      "BT_GATE_TYPECHECK=true",
+      `BT_GATE_TEST=${cmdWithEscapes}`,
+      "",
+    ].join("\n")
+  );
+
+  const res = runBt(["gates"], { cwd });
+  assert.equal(res.code, 0, res.stderr);
+
+  const gatesJson = path.join(cwd, ".bt", "state", "gates.json");
+  const raw = fs.readFileSync(gatesJson, "utf8");
+  const data = JSON.parse(raw);
+  assert.equal(data.results.test.status, 0);
+  assert.equal(data.results.test.cmd, cmdWithEscapes);
+});
+
 if (process.exitCode) process.exit(process.exitCode);
 
 test("pr: fails when required files are unstaged", () => {

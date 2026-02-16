@@ -33,6 +33,18 @@ bt__gate_cmd() {
   esac
 }
 
+bt__json_escape() {
+  local s="${1-}"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"
+  s="${s//$'\r'/\\r}"
+  s="${s//$'\t'/\\t}"
+  s="${s//$'\b'/\\b}"
+  s="${s//$'\f'/\\f}"
+  printf '%s' "$s"
+}
+
 # Returns gate config (key=cmd) for those available.
 bt_get_gate_config() {
   local detected
@@ -89,8 +101,10 @@ bt_run_gates() {
       overall_ok=1
     fi
 
-    local entry
-    printf -v entry '"%s": {"cmd": "%s", "status": %d}' "$k" "$v" "$status"
+    local entry k_json v_json
+    k_json="$(bt__json_escape "$k")"
+    v_json="$(bt__json_escape "$v")"
+    printf -v entry '"%s": {"cmd": "%s", "status": %d}' "$k_json" "$v_json" "$status"
     if [[ -z "$results_json" ]]; then
       results_json="$entry"
     else
