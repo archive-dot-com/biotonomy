@@ -641,6 +641,20 @@ exit 0
   assert.doesNotMatch(args, /(^|\n)\n/);
 });
 
+test("pr: --base/--remote missing value exits 2 with validation error", () => {
+  const cases = [
+    { args: ["pr", "feat-missing-base", "--base"], flag: "--base" },
+    { args: ["pr", "feat-missing-remote", "--remote"], flag: "--remote" },
+  ];
+
+  for (const c of cases) {
+    const res = runBt(c.args);
+    assert.equal(res.code, 2, `${c.flag} missing value should exit 2`);
+    assert.match(res.stderr, new RegExp(`${c.flag} requires a value`));
+    assert.doesNotMatch(res.stderr, /shift count out of range/i);
+  }
+});
+
 test("gates behavior: writes global or feature gates.json with detailed JSON", () => {
   const cwd = mkTmp();
   writeFile(
@@ -681,3 +695,36 @@ test("gates behavior: writes global or feature gates.json with detailed JSON", (
 });
 
 if (process.exitCode) process.exit(process.exitCode);
+
+test("pr: fails when required files are unstaged", () => {
+    const cwd = mkTmp();
+    runBt(["bootstrap"], { cwd });
+    runBt(["spec", "feat-unstaged"], { cwd });
+    
+    // Create an implementation file but don't add it
+    const libDir = path.join(cwd, "lib");
+    fs.mkdirSync(libDir, { recursive: true });
+    fs.writeFileSync(path.join(libDir, "index.mjs"), "export const x = 1;");
+    
+    const res = runBt(["pr", "feat-unstaged", "--dry-run"], { cwd });
+    
+    assert.equal(res.code, 1, "pr should exit 1 on unstaged files");
+    assert.ok(res.stderr.includes("Abort: ship requires all feature files to be staged"), "missing abort message");
+    assert.ok(res.stderr.includes("lib/index.mjs"), "should list the unstaged file");
+});
+
+test("P2: Artifacts section is included in PR body", () => {
+  const cwd = mkTmp();
+  runBt(["bootstrap"], { cwd });
+  runBt(["spec", "feat-artifacts"], { cwd });
+  
+  // Fake a review and an artifact
+  writeFile(path.join(cwd, "specs", "feat-artifacts", "REVIEW.md"), "Verdict: APPROVED");
+  writeFile(path.join(cwd, "specs", "feat-artifacts", ".artifacts", "summary.txt"), "Done.");
+
+  const res = runBt(["pr", "feat-artifacts", "--dry-run"], { cwd });
+  
+  assert.ok(res.stdout.includes("### `specs/feat-artifacts/SPEC.md`"), "SPEC missing from artifacts");
+  assert.ok(res.stdout.includes("### `specs/feat-artifacts/REVIEW.md`"), "REVIEW missing from artifacts");
+  assert.ok(res.stdout.includes("### `specs/feat-artifacts/.artifacts/summary.txt`"), "Artifact missing");
+});

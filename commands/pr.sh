@@ -129,8 +129,22 @@ bt_cmd_pr() {
       --run) run_mode="run"; shift ;;
       --dry-run) run_mode="dry-run"; shift ;;
       --draft) draft=1; shift ;;
-      --base) base="${2:-}"; shift 2 ;;
-      --remote) remote="${2:-}"; shift 2 ;;
+      --base)
+        if [[ $# -lt 2 || "${2:-}" == -* ]]; then
+          bt_err "--base requires a value"
+          return 2
+        fi
+        base="${2:-}"
+        shift 2
+        ;;
+      --remote)
+        if [[ $# -lt 2 || "${2:-}" == -* ]]; then
+          bt_err "--remote requires a value"
+          return 2
+        fi
+        remote="${2:-}"
+        shift 2
+        ;;
       --no-commit) commit=0; shift ;;
       -*)
         bt_err "unknown flag: $1"
@@ -268,6 +282,12 @@ bt_cmd_pr() {
     fi
   else
     bt_info "[dry-run] gh ${pr_args[*]}"
+    local artifacts_preview
+    artifacts_preview="$(mktemp "${TMPDIR:-/tmp}/bt-pr-artifacts-preview.XXXXXX")"
+    bt_pr_write_artifacts_comment "$feature" "$specs_dir" "$artifacts_preview"
+    bt_info "[dry-run] Artifacts comment would contain:"
+    cat "$artifacts_preview"
+    rm -f "$artifacts_preview"
   fi
 
   bt_info "ship complete for $feature"
