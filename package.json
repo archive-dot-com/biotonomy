@@ -12,7 +12,8 @@
   },
   "homepage": "https://github.com/archive-dot-com/biotonomy#readme",
   "bin": {
-    "bt": "bt"
+    "bt": "bt",
+    "biotonomy": "bt"
   },
   "files": [
     "bt",

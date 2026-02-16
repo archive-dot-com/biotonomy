@@ -60,6 +60,12 @@ test("unknown command exits 2", () => {
   assert.match(res.stderr, /unknown command/i);
 });
 
+test("package bin mapping includes npx biotonomy command", () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
+  assert.equal(pkg.bin?.bt, "bt");
+  assert.equal(pkg.bin?.biotonomy, "bt");
+});
+
 test("bootstrap creates .bt.env and folders", () => {
   const cwd = mkTmp();
   const res = runBt(["bootstrap"], { cwd });
