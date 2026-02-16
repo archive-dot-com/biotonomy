@@ -68,12 +68,12 @@ bt_env_load() {
     env_file="$(bt_realpath "$env_file")"
     bt_env_load_file "$env_file" || bt_die "failed to load BT_ENV_FILE=$env_file"
   else
-    # Prefer project config from the caller's current working directory.
-    if [[ -f "$PWD/.bt.env" ]]; then
-      bt_env_load_file "$PWD/.bt.env" || bt_die "failed to load env: $PWD/.bt.env"
-    # If running with a target repo, fall back to that repo's .bt.env.
-    elif [[ -n "${BT_TARGET_DIR:-}" && -f "$BT_TARGET_DIR/.bt.env" ]]; then
+    # When targeting another repo, its env must win over caller CWD config.
+    if [[ -n "${BT_TARGET_DIR:-}" && -f "$BT_TARGET_DIR/.bt.env" ]]; then
       bt_env_load_file "$BT_TARGET_DIR/.bt.env" || bt_die "failed to load env: $BT_TARGET_DIR/.bt.env"
+    # Otherwise use caller project config.
+    elif [[ -f "$PWD/.bt.env" ]]; then
+      bt_env_load_file "$PWD/.bt.env" || bt_die "failed to load env: $PWD/.bt.env"
     fi
   fi
 

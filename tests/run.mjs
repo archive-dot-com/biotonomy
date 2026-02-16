@@ -790,6 +790,9 @@ test("BT_TARGET_DIR: loop writes review/progress/history artifacts under target"
   });
   assert.equal(spec.code, 0, spec.stderr);
 
+  const targetFeatureDir = path.join(target, "specs", "feat-loop-target");
+  writeFile(path.join(targetFeatureDir, "PLAN_REVIEW.md"), "Verdict: APPROVED_PLAN\n\nProceed.\n");
+
   const bin = path.join(caller, "bin");
   const codex = path.join(bin, "codex");
   writeExe(
@@ -815,7 +818,6 @@ fi
   });
   assert.equal(res.code, 0, res.stdout + res.stderr);
 
-  const targetFeatureDir = path.join(target, "specs", "feat-loop-target");
   assert.ok(fs.existsSync(path.join(targetFeatureDir, "REVIEW.md")), "target REVIEW.md missing");
   assert.ok(fs.existsSync(path.join(targetFeatureDir, "loop-progress.json")), "target loop-progress.json missing");
   assert.ok(fs.existsSync(path.join(targetFeatureDir, "history")), "target history/ missing");
@@ -1321,6 +1323,7 @@ exit 0
 
     writeFile(path.join(cwd, ".bt.env"), `BT_GATE_TEST=${npm} test\n`);
     runBt(["spec", "feat-f1"], { cwd });
+    writeFile(path.join(cwd, "specs", "feat-f1", "PLAN_REVIEW.md"), "Verdict: APPROVED_PLAN\n");
 
     const res = runBt(["implement", "feat-f1"], {
         cwd,
@@ -1430,6 +1433,7 @@ test("issue #10: loop gate sequencing (implement->review; NEEDS_CHANGES->fix->im
   const cwd = mkTmp();
   const spec = runBt(["spec", "feat-seq"], { cwd });
   assert.equal(spec.code, 0, spec.stderr);
+  writeFile(path.join(cwd, "specs", "feat-seq", "PLAN_REVIEW.md"), "Verdict: APPROVED_PLAN\n");
 
   const events = path.join(cwd, "call-order.log");
   const bin = path.join(cwd, "bin");
@@ -1513,6 +1517,7 @@ test("issue #10: loop-progress.json persists per-iteration stage results", () =>
   const cwd = mkTmp();
   const spec = runBt(["spec", "feat-loop-stage-results"], { cwd });
   assert.equal(spec.code, 0, spec.stderr);
+  writeFile(path.join(cwd, "specs", "feat-loop-stage-results", "PLAN_REVIEW.md"), "Verdict: APPROVED_PLAN\n");
 
   const bin = path.join(cwd, "bin");
   const codex = path.join(bin, "codex");
