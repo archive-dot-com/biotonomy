@@ -102,7 +102,26 @@ bt_dispatch() {
   shift || true
 
   case "$cmd" in
-    -h|--help|help) bt_usage; return 0 ;;
+    -h|--help|help)
+      if [[ $# -gt 0 ]]; then
+        # bt help <cmd>
+        cmd="$1"
+        shift
+        local cmd_file="$BT_ROOT/commands/$cmd.sh"
+        if [[ "$cmd" == "ship" ]]; then cmd_file="$BT_ROOT/commands/pr.sh"; fi
+        if [[ -f "$cmd_file" ]]; then
+          # shellcheck source=/dev/null
+          source "$cmd_file"
+          local safe_cmd="${cmd//-/_}"
+          local fn="bt_${safe_cmd}_usage"
+          if [[ "$cmd" == "ship" ]]; then fn="bt_pr_usage"; fi
+          if declare -F "$fn" >/dev/null 2>&1; then
+            "$fn"
+            return 0
+          fi
+        fi
+      fi
+      bt_usage; return 0 ;;
   esac
 
   bt_env_load || true
