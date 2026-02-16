@@ -59,7 +59,23 @@ bt_cmd_loop() {
 
   local iter=0
   local review_file
-  review_file="$(bt_feature_dir "$feature")/REVIEW.md"
+  local feat_dir
+  feat_dir="$(bt_feature_dir "$feature")"
+  review_file="$feat_dir/REVIEW.md"
+  local history_dir="$feat_dir/history"
+  local progress_file="$feat_dir/loop-progress.json"
+
+  # Initialize progress
+  mkdir -p "$history_dir"
+  cat > "$progress_file" <<EOF
+{
+  "feature": "$feature",
+  "maxIterations": $max_iter,
+  "completedIterations": 0,
+  "result": "in-progress",
+  "iterations": []
+}
+EOF
 
   while [[ "$iter" -lt "$max_iter" ]]; do
     iter=$((iter + 1))
@@ -104,7 +120,33 @@ bt_cmd_loop() {
       bt_info "gates: PASS"
     fi
 
+    # Record iteration
+    local ts
+    ts="$(date +%Y-%m-%dT%H%M%S%z)"
+    local iter_padded
+    iter_padded="$(printf "%03d" "$iter")"
+    local hist_file="$history_dir/$ts-loop-iter-$iter_padded.md"
+    cp "$review_file" "$hist_file"
+
+    # Update progress.json
+    python3 - <<PY
+import json, sys
+p = "$progress_file"
+with open(p, 'r') as f:
+    data = json.load(f)
+data['completedIterations'] = $iter
+data['iterations'].append({
+    "iteration": $iter,
+    "verdict": "$verdict",
+    "gates": "PASS" if "$gates_ok" == "1" else "FAIL",
+    "historyFile": "$hist_file"
+})
+with open(p, 'w') as f:
+    json.dump(data, f, indent=2)
+PY
+
     if [[ "$verdict" == "APPROVED" && "$gates_ok" == "1" ]]; then
+      python3 -c "import json; p='$progress_file'; d=json.load(open(p)); d['result']='success'; json.dump(d, open(p, 'w'), indent=2)"
       bt_info "Loop successful! Verdict APPROVED and Gates PASS."
       return 0
     fi
@@ -112,6 +154,7 @@ bt_cmd_loop() {
     bt_info "Verdict is $verdict (or gates failed); looping..."
   done
 
+  python3 -c "import json; p='$progress_file'; d=json.load(open(p)); d['result']='max-iterations-exceeded'; json.dump(d, open(p, 'w'), indent=2)"
   bt_err "Loop reached max iterations ($max_iter) without approval."
   return 1
 }

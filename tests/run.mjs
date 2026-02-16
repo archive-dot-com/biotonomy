@@ -300,6 +300,110 @@ exit 0
     assert.match(combined, /Loop successful/);
 });
 
+test("loop persists per-iteration history and deterministic progress artifact", () => {
+  const cwd = mkTmp();
+  const spec = runBt(["spec", "feat-loop-history"], { cwd });
+  assert.equal(spec.code, 0, spec.stderr);
+
+  const bin = path.join(cwd, "bin");
+  const codex = path.join(bin, "codex");
+  const reviewCount = path.join(cwd, "review.count");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+out=""
+args=("$@")
+for ((i=0; i<\${#args[@]}; i++)); do
+  if [[ "\${args[i]}" == "-o" ]]; then
+    out="\${args[i+1]}"
+  fi
+done
+if [[ -n "$out" ]]; then
+  c=0
+  if [[ -f ${JSON.stringify(reviewCount)} ]]; then
+    c=$(cat ${JSON.stringify(reviewCount)})
+  fi
+  c=$((c+1))
+  printf '%s\\n' "$c" > ${JSON.stringify(reviewCount)}
+  if [[ "$c" -eq 1 ]]; then
+    printf 'Verdict: NEEDS_CHANGES\\n' > "$out"
+  else
+    printf 'Verdict: APPROVED\\n' > "$out"
+  fi
+fi
+exit 0
+`
+  );
+
+  const res = runBt(["loop", "feat-loop-history", "--max-iterations", "3"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stdout + res.stderr);
+
+  const historyDir = path.join(cwd, "specs", "feat-loop-history", "history");
+  const historyFiles = fs.readdirSync(historyDir);
+  assert.ok(historyFiles.some((f) => f.endsWith("-loop-iter-001.md")), "missing loop iter 1 history");
+  assert.ok(historyFiles.some((f) => f.endsWith("-loop-iter-002.md")), "missing loop iter 2 history");
+
+  const progressPath = path.join(cwd, "specs", "feat-loop-history", "loop-progress.json");
+  assert.ok(fs.existsSync(progressPath), "missing loop-progress.json");
+  const progress = JSON.parse(fs.readFileSync(progressPath, "utf8"));
+  assert.equal(progress.feature, "feat-loop-history");
+  assert.equal(progress.maxIterations, 3);
+  assert.equal(progress.completedIterations, 2);
+  assert.equal(progress.result, "success");
+  assert.equal(progress.iterations[0].verdict, "NEEDS_CHANGES");
+  assert.equal(progress.iterations[1].verdict, "APPROVED");
+});
+
+test("loop exits non-zero on max iterations and persists failure progress", () => {
+  const cwd = mkTmp();
+  const spec = runBt(["spec", "feat-loop-max-fail"], { cwd });
+  assert.equal(spec.code, 0, spec.stderr);
+
+  const bin = path.join(cwd, "bin");
+  const codex = path.join(bin, "codex");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+out=""
+args=("$@")
+for ((i=0; i<\${#args[@]}; i++)); do
+  if [[ "\${args[i]}" == "-o" ]]; then
+    out="\${args[i+1]}"
+  fi
+done
+if [[ -n "$out" ]]; then
+  printf 'Verdict: NEEDS_CHANGES\\n' > "$out"
+fi
+exit 0
+`
+  );
+
+  const res = runBt(["loop", "feat-loop-max-fail", "--max-iterations", "2"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 1, res.stdout + res.stderr);
+  assert.match(res.stderr, /max iterations/i);
+
+  const progressPath = path.join(cwd, "specs", "feat-loop-max-fail", "loop-progress.json");
+  assert.ok(fs.existsSync(progressPath), "missing loop-progress.json on failure");
+  const progress = JSON.parse(fs.readFileSync(progressPath, "utf8"));
+  assert.equal(progress.maxIterations, 2);
+  assert.equal(progress.completedIterations, 2);
+  assert.equal(progress.result, "max-iterations-exceeded");
+  assert.equal(progress.iterations.length, 2);
+
+  const historyDir = path.join(cwd, "specs", "feat-loop-max-fail", "history");
+  const historyFiles = fs.readdirSync(historyDir);
+  assert.ok(historyFiles.some((f) => f.endsWith("-loop-iter-001.md")), "missing loop iter 1 history");
+  assert.ok(historyFiles.some((f) => f.endsWith("-loop-iter-002.md")), "missing loop iter 2 history");
+});
+
 test("command routing: each command --help exits 0", () => {
   const cmds = [
     "bootstrap",
