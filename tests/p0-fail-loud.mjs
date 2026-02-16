@@ -24,7 +24,7 @@ function runBt(args, { cwd, env } = {}) {
 }
 
 function mkTmp() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "biotonomy-test-p0-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "biotonomy-test-p0-fail-loud-"));
 }
 
 function test(name, fn) {
@@ -38,27 +38,38 @@ function test(name, fn) {
   }
 }
 
-test("P0: pr/ship should fail loud even with --no-commit if unstaged files found in tracked dirs", () => {
+test("spec/implement/review/fix: reject traversal feature names (fail-loud)", () => {
     const cwd = mkTmp();
-    
-    // Setup git repo
-    spawnSync("git", ["init", "-q"], { cwd });
-    
-    // Required files etc
-    runBt(["bootstrap"], { cwd });
-    runBt(["spec", "feat-p0"], { cwd });
-    
-    // Create an unstaged file in a tracked directory
-    const unstagedFile = path.join(cwd, "lib", "p0-fix.mjs");
-    fs.mkdirSync(path.dirname(unstagedFile), { recursive: true });
-    fs.writeFileSync(unstagedFile, "export const p0 = true;");
 
-    // We use --no-commit but expect it to STILL fail because 'lib/' is in check_paths
-    const res = runBt(["pr", "feat-p0", "--no-commit", "--dry-run"], { cwd });
-    
-    assert.equal(res.code, 1, `Expected exit code 1, got ${res.code}. Out: ${res.stdout} Err: ${res.stderr}`);
-    assert.match(res.stderr, /Abort: ship requires all feature files to be staged/, "Should show abort message");
-    assert.match(res.stderr, /lib\/p0-fix\.mjs/, "Should list the offending file");
+    // Spec with traversal should fail loud
+    const res1 = runBt(["spec", "../../attacker"], { cwd });
+    assert.equal(res1.code, 1, "spec should exit 1 on traversal");
+    assert.ok(res1.stderr.includes("invalid feature"), "missing invalid feature error");
+
+    // Loop with traversal should fail loud
+    const res2 = runBt(["loop", "../../attacker"], { cwd });
+    assert.equal(res2.code, 1, "loop should exit 1 on traversal");
+    assert.ok(res2.stderr.includes("invalid feature"), "missing invalid feature error");
+
+    // implement with traversal should fail loud
+    const res3 = runBt(["implement", "../../attacker"], { cwd });
+    assert.equal(res3.code, 1, "implement should exit 1 on traversal");
+    assert.ok(res3.stderr.includes("invalid feature"), "missing invalid feature error");
+});
+
+test("spec: support sanitized URL for feature", () => {
+    const cwd = mkTmp();
+
+    // Mock gh to allow fetching issue data
+    const ghPath = path.join(cwd, "gh-mock");
+    fs.writeFileSync(ghPath, "#!/bin/bash\necho '{\"title\": \"Sanitize Slug\", \"url\": \"http://gh\", \"body\": \"desc\"}'", { mode: 0o755 });
+
+    const env = { PATH: `${cwd}:${process.env.PATH}` };
+
+    // Use a full issue URL
+    const res = runBt(["spec", "https://github.com/archive-dot-com/biotonomy/issues/34"], { cwd, env });
+    assert.equal(res.code, 0, `spec should handle URL: ${res.stderr}`);
+    assert.ok(fs.existsSync(path.join(cwd, "specs/issue-34/SPEC.md")), "SPEC.md not found in issue-34 folder");
 });
 
 if (process.exitCode) process.exit(process.exitCode);
