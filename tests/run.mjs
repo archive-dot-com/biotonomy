@@ -765,6 +765,85 @@ exit 2
   assert.match(args, /^issue\nview\n3\n-R\nacme-co\/biotonomy\n--json\ntitle,body,url\n/m);
 });
 
+test("spec: existing feature SPEC is not overwritten without --force", () => {
+  const cwd = mkTmp();
+  const first = runBt(["spec", "feat-force-default"], { cwd });
+  assert.equal(first.code, 0, first.stderr);
+
+  const specPath = path.join(cwd, "specs", "feat-force-default", "SPEC.md");
+  writeFile(specPath, "# custom spec\n");
+
+  const second = runBt(["spec", "feat-force-default"], { cwd });
+  assert.equal(second.code, 0, second.stderr);
+  assert.match(second.stdout + second.stderr, /SPEC already exists/i);
+  assert.equal(fs.readFileSync(specPath, "utf8"), "# custom spec\n");
+});
+
+test("spec: existing feature SPEC is overwritten with --force", () => {
+  const cwd = mkTmp();
+  const first = runBt(["spec", "feat-force-overwrite"], { cwd });
+  assert.equal(first.code, 0, first.stderr);
+
+  const specPath = path.join(cwd, "specs", "feat-force-overwrite", "SPEC.md");
+  writeFile(specPath, "# custom spec\n");
+
+  const second = runBt(["spec", "--force", "feat-force-overwrite"], { cwd });
+  assert.equal(second.code, 0, second.stderr);
+  assert.doesNotMatch(fs.readFileSync(specPath, "utf8"), /^# custom spec$/m);
+  assert.match(fs.readFileSync(specPath, "utf8"), /^# Stories$/m);
+});
+
+test("spec: issue-backed SPEC can be regenerated with --force", () => {
+  const cwd = mkTmp();
+  writeFile(path.join(cwd, ".bt.env"), "BT_REPO=acme-co/biotonomy\n");
+
+  const bin = path.join(cwd, "bin");
+  const counter = path.join(cwd, "gh.counter");
+  const gh = path.join(bin, "gh");
+  writeExe(
+    gh,
+    `#!/usr/bin/env bash
+set -euo pipefail
+count=0
+if [[ -f ${JSON.stringify(counter)} ]]; then
+  count="$(cat ${JSON.stringify(counter)})"
+fi
+count=$((count + 1))
+printf '%s' "$count" > ${JSON.stringify(counter)}
+if [[ "$1" == "issue" && "$2" == "view" ]]; then
+  if [[ "$count" -eq 1 ]]; then
+    cat <<'JSON'
+{"title":"First title","url":"https://github.com/acme-co/biotonomy/issues/7","body":"First body"}
+JSON
+  else
+    cat <<'JSON'
+{"title":"Second title","url":"https://github.com/acme-co/biotonomy/issues/7","body":"Second body"}
+JSON
+  fi
+  exit 0
+fi
+exit 2
+`
+  );
+
+  const first = runBt(["spec", "7"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(first.code, 0, first.stderr);
+  const specPath = path.join(cwd, "specs", "issue-7", "SPEC.md");
+  assert.match(fs.readFileSync(specPath, "utf8"), /## First title/);
+
+  const second = runBt(["spec", "--force", "7"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(second.code, 0, second.stderr);
+  const content = fs.readFileSync(specPath, "utf8");
+  assert.match(content, /## Second title/);
+  assert.doesNotMatch(content, /## First title/);
+});
+
 test("repo resolution: uses git remote origin when available (no BT_REPO)", () => {
   const cwd = mkTmp();
   const r = (cmd) =>

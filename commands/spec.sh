@@ -39,23 +39,47 @@ NODE
 }
 
 bt_cmd_spec() {
-  if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-    cat <<'EOF'
+  local force=0
+  local arg=""
+  while [[ $# -gt 0 ]]; do
+    case "${1:-}" in
+      -h|--help)
+        cat <<'EOF'
 Usage:
-  bt spec <issue#>
-  bt spec <feature>
+  bt spec [--force] <issue#>
+  bt spec [--force] <feature>
+
+Options:
+  --force   Overwrite existing SPEC.md if it already exists.
 
 For an <issue#>, requires `gh` and creates `specs/issue-<n>/SPEC.md` using the issue title/body.
 For a <feature>, creates `specs/<feature>/SPEC.md` with a minimal, parseable story list.
 EOF
-    return 0
+        return 0
+        ;;
+      --force)
+        force=1
+        shift
+        ;;
+      --*)
+        bt_die "unknown option for spec: $1"
+        ;;
+      *)
+        if [[ -n "$arg" ]]; then
+          bt_die "spec accepts exactly one <issue#> or <feature>"
+        fi
+        arg="$1"
+        shift
+        ;;
+    esac
+  done
+
+  if [[ -z "$arg" ]]; then
+    bt_die "spec requires <issue#> or <feature>"
   fi
 
   bt_env_load || true
   bt_ensure_dirs
-
-  local arg="${1:-}"
-  [[ -n "$arg" ]] || bt_die "spec requires <issue#> or <feature>"
 
   local feature issue
   issue=""
@@ -72,8 +96,12 @@ EOF
 
   local spec="$dir/SPEC.md"
   if [[ -f "$spec" ]]; then
-    bt_info "SPEC already exists: $spec"
-    return 0
+    if (( force == 1 )); then
+      bt_info "overwriting existing SPEC: $spec"
+    else
+      bt_info "SPEC already exists: $spec"
+      return 0
+    fi
   fi
 
   if [[ -n "$issue" ]]; then
