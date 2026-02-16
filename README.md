@@ -1,110 +1,98 @@
 # Biotonomy
 
-Biotonomy is a command-line tool for shipping code changes with Codex. It wraps the messy, manual steps of AI-assisted development into a structured, verifiable loop: `spec -> research -> implement -> review -> fix -> pr`.
+Biotonomy (`bt`) is a CLI for running a Codex-driven development workflow in a repo:
 
-- **Verifiable**: Every stage (spec, implementation, fix) is enforced by quality gates (tests, lint, typecheck).
-- **History-aware**: Keeps versioned history of specs, research, and reviews in your repo.
-- **Autonomous**: Can run as a fully automated driver (`bt loop`) that iterates until code passes review and gates.
+`spec -> research -> plan-review -> implement -> review -> fix -> pr`
 
-> **Status**: v0.2.0 is stable. It supports full manual stage progression and the new autonomous `bt loop` driver.
+It supports both:
+- manual stage-by-stage execution
+- a one-command iterative loop with `bt loop`
 
-## 60-Second Quickstart
+## Quickstart
 
-Install via npm:
+Prereqs: Node.js >= 18, `git`, Codex CLI available as `codex` (or set `BT_CODEX_BIN`).
 
 ```bash
+# Install
 npm i -g biotonomy
-# then use: bt ...
-```
 
-Or run directly with npx:
-
-```bash
-npx biotonomy ...
-```
-
-### Try the Demo
-In any git repository (or a fresh one):
-
-```bash
-# 1. Initialize biotonomy scaffold
+# In your project repo
 bt bootstrap
 
-# 2. Define a new feature (creates specs/hello-world/SPEC.md)
-bt spec hello-world
+# Create a feature scaffold
+FEATURE=hello-world
+bt spec "$FEATURE"
 
-# 3. Check status
+# Loop requires an approved plan review verdict first
+cat > "specs/$FEATURE/PLAN_REVIEW.md" <<'MD'
+Verdict: APPROVED_PLAN
+MD
+
+# Run autonomous implement/review/fix iterations (with gates)
+bt loop "$FEATURE" --max-iterations 3
+```
+
+## `bt loop`
+
+`bt loop <feature> [--max-iterations N]` runs:
+1. preflight quality gates
+2. `implement`
+3. `review`
+4. `fix` only when review verdict is `NEEDS_CHANGES`
+5. repeat until verdict is `APPROVE`/`APPROVED` and gates pass, or max iterations is reached
+
+Loop hard-requires an approved `specs/<feature>/PLAN_REVIEW.md` verdict (`APPROVE_PLAN` or `APPROVED_PLAN`).
+
+## Artifacts And State
+
+Biotonomy writes feature state under `specs/<feature>/`:
+- `SPEC.md`
+- `RESEARCH.md`
+- `PLAN_REVIEW.md`
+- `REVIEW.md`
+- `history/` stage snapshots (`###-<stage>.md`) and loop iteration snapshots (`*-loop-iter-###.md`)
+- `loop-progress.json` loop summary and per-iteration status
+- `progress.txt` append-only stage log
+- `.artifacts/` Codex logs and command artifacts (for example `codex-implement.log`, `codex-review.log`, `codex-fix.log`)
+- `gates.json` feature gate results when running `bt gates <feature>`
+
+Global gate state is written to `.bt/state/gates.json` when running `bt gates` without a feature.
+
+## Manual Commands
+
+```bash
+bt bootstrap
+bt spec <feature|issue#>
+bt research <feature>
+bt plan-review <feature>
+bt implement <feature>
+bt review <feature>
+bt fix <feature>
+bt loop <feature> [--max-iterations N]
+bt gates [feature]
 bt status
+bt pr <feature> [--run]
 ```
 
-## The "True Loop" Workflow
+## Configuration
 
-The primary power of Biotonomy is the autonomous implementation driver. Instead of running stages manually, you can let Biotonomy drive Codex until the feature is complete and verified.
-
-```bash
-# Start a loop that iterates research -> implement -> review -> fix
-# It continues until the review verdict is APPROVE and gates pass.
-bt loop my-feature --max-iterations 3
-```
-
-## Manual Stage Progression
-
-If you prefer step-by-step control, use the individual commands:
-
-1. **`bt spec <feature|issue#>`**: Scaffolds a feature spec. If an issue number is provided, it fetches details from GitHub.
-2. **`bt research <feature>`**: Uses Codex to gather context and write `RESEARCH.md`.
-3. **`bt plan-review <feature>`**: Enforces an explicit planning gate before code is touched.
-4. **`bt implement <feature>`**: Primary code generation stage. Runs implementation gates (tests, lint) automatically.
-5. **`bt review <feature>`**: Generates a quality review of the implementation.
-6. **`bt fix <feature>`**: Addresses review findings and quality gate failures.
-7. **`bt pr <feature> --run`**: Formats artifacts into a PR description, pushes the branch, and opens a GitHub PR.
-
-## Expected Artifacts
-
-Biotonomy keeps your work organized under `specs/<feature>/`:
-
-- `SPEC.md`: Feature requirements and plan.
-- `RESEARCH.md`: Context and architectural findings.
-- `PLAN_REVIEW.md`: Planning gate verdict history.
-- `REVIEW.md`: Latest implementation review.
-- `progress.json`: State tracking for the loop driver.
-- `history/`: Versioned snapshots of every major stage iteration.
-- `.artifacts/`: Raw LLM logs and diagnostic traces.
-
-## Configuration & Quality Gates
-
-Biotonomy automatically detects your test/lint stack (npm, vitest, jest, eslint, etc.). You can override them in `.bt.env`:
+Project config lives in `.bt.env` (created by `bt bootstrap`). Common overrides:
 
 ```bash
+BT_SPECS_DIR=specs
+BT_STATE_DIR=.bt
 BT_GATE_LINT="npm run lint"
 BT_GATE_TYPECHECK="tsc --noEmit"
 BT_GATE_TEST="npm test"
-BT_CODEX_BIN="/usr/local/bin/codex"
+BT_CODEX_BIN="/path/to/codex"
 ```
 
-## Requirements
+## Release
 
-- **Node.js**: >= 18
-- **git**: Required for state and PR management.
-- **gh CLI**: Required for `bt spec <issue#>` and `bt pr`.
-- **Codex**: Required for autonomous stages (`research`, `implement`, `review`, `fix`, `loop`).
-
-## Commands Reference
+Run the release readiness checks:
 
 ```bash
-bt bootstrap                      # Initialize biotonomy in current repo
-bt spec <feature|issue#>          # Create/fetch spec
-bt research <feature>             # Run research phase
-bt plan-review <feature>          # Run planning gate
-bt implement <feature>            # Run implementation phase
-bt review <feature>               # Run review phase
-bt fix <feature>                  # Run fix phase
-bt loop <feature>                 # Run autonomous impl cycle
-bt gates [feature]                 # Run all quality gates
-bt status                         # Show workspace status
-bt pr <feature> [--run]           # Open GitHub PR
-bt reset                          # Clear local biotonomy state
+npm run release:ready
 ```
 
----
-© 2026 Archive. CLI designed for autonomous workflows.
+That script runs tests, lint, pack verification, and `npm pack --dry-run`.
