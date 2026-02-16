@@ -35,6 +35,7 @@ EOF
   if ! BT_FEATURE="$feature" BT_CODEX_LOG_FILE="$codex_logf" bt_codex_exec_read_only "$BT_ROOT/prompts/review.md" "$out"; then
     codex_ec=$?
     bt_warn "codex exited non-zero (review): $codex_ec"
+    bt_die "codex failed (review), stopping."
   fi
 
   if [[ ! -f "$out" ]]; then
