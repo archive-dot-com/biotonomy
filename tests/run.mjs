@@ -378,6 +378,44 @@ exit 0
   assert.ok(fs.existsSync(out), `PLAN_REVIEW.md missing: ${res.stdout} ${res.stderr}`);
 });
 
+test("issue #29: plan-review uses feature-scoped artifact log path (not shared /tmp/codex.log)", () => {
+  const cwd = mkTmp();
+  const feature = "feat-plan-review-log-scope";
+
+  const spec = runBt(["spec", feature], { cwd });
+  assert.equal(spec.code, 0, spec.stderr);
+
+  const capturedLogPath = path.join(cwd, "captured-plan-review-log-path.txt");
+  const bin = path.join(cwd, "bin");
+  const codex = path.join(bin, "codex");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "\${BT_CODEX_LOG_FILE:-}" > ${JSON.stringify(capturedLogPath)}
+out="specs/\${BT_FEATURE}/PLAN_REVIEW.md"
+mkdir -p "\$(dirname "\$out")"
+printf '%s\\n' "# Plan Review from stub" "Verdict: APPROVED_PLAN" > "\$out"
+exit 0
+`
+  );
+
+  const res = runBt(["plan-review", feature], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stdout + res.stderr);
+
+  const expectedLogPathSuffix = path.join("specs", feature, ".artifacts", "codex-plan-review.log");
+  const actualLogPath = fs.readFileSync(capturedLogPath, "utf8").trim();
+  assert.ok(
+    actualLogPath.endsWith(expectedLogPathSuffix),
+    `expected feature-scoped artifact suffix ${expectedLogPathSuffix}, got: ${actualLogPath}`
+  );
+  assert.notEqual(actualLogPath, "/tmp/codex.log");
+  assert.ok(fs.existsSync(actualLogPath), "expected plan-review artifact log file missing");
+});
+
 test("implement hard-fails without approved PLAN_REVIEW verdict", () => {
     const cwd = mkTmp();
 
