@@ -743,6 +743,109 @@ exit 0
   assert.ok(historyFiles.some((f) => f.endsWith("-loop-iter-002.md")), "missing loop iter 2 history");
 });
 
+test("issue #30: loop validates PLAN_REVIEW before preflight gates (missing PLAN_REVIEW)", () => {
+  const cwd = mkTmp();
+
+  runBt(["spec", "feat-loop-no-plan-preflight"], { cwd });
+
+  const events = path.join(cwd, "call-order.log");
+  const bin = path.join(cwd, "bin");
+  const npm = path.join(bin, "npm");
+  writeExe(
+    npm,
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "npm:$*" >> ${JSON.stringify(events)}
+exit 0
+`
+  );
+
+  writeFile(path.join(cwd, ".bt.env"), `BT_GATE_TEST=${npm} test\n`);
+
+  const res = runBt(["loop", "feat-loop-no-plan-preflight", "--max-iterations", "1"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+
+  assert.equal(res.code, 1, res.stdout + res.stderr);
+  assert.match(res.stderr, /PLAN_REVIEW\.md/i);
+
+  if (fs.existsSync(events)) {
+    const lines = fs.readFileSync(events, "utf8").trim().split("\n").filter(Boolean);
+    assert.ok(!lines.some((line) => line.startsWith("npm:")), `preflight gates should not run before PLAN_REVIEW validation: ${lines.join(" -> ")}`);
+  }
+});
+
+test("issue #30: loop validates PLAN_REVIEW before preflight gates (unapproved PLAN_REVIEW)", () => {
+  const cwd = mkTmp();
+
+  runBt(["spec", "feat-loop-unapproved-plan-preflight"], { cwd });
+  const featDir = path.join(cwd, "specs", "feat-loop-unapproved-plan-preflight");
+  fs.writeFileSync(path.join(featDir, "PLAN_REVIEW.md"), "Verdict: NEEDS_CHANGES\n");
+
+  const events = path.join(cwd, "call-order.log");
+  const bin = path.join(cwd, "bin");
+  const npm = path.join(bin, "npm");
+  writeExe(
+    npm,
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "npm:$*" >> ${JSON.stringify(events)}
+exit 0
+`
+  );
+
+  writeFile(path.join(cwd, ".bt.env"), `BT_GATE_TEST=${npm} test\n`);
+
+  const res = runBt(["loop", "feat-loop-unapproved-plan-preflight", "--max-iterations", "1"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+
+  assert.equal(res.code, 1, res.stdout + res.stderr);
+  assert.match(res.stderr, /PLAN_REVIEW\.md/i);
+
+  if (fs.existsSync(events)) {
+    const lines = fs.readFileSync(events, "utf8").trim().split("\n").filter(Boolean);
+    assert.ok(!lines.some((line) => line.startsWith("npm:")), `preflight gates should not run before PLAN_REVIEW validation: ${lines.join(" -> ")}`);
+  }
+});
+
+test("issue #28: loop fails loud when no gates are configured (no false PASS)", () => {
+  const cwd = mkTmp();
+
+  runBt(["spec", "feat-loop-no-gates"], { cwd });
+  const featDir = path.join(cwd, "specs", "feat-loop-no-gates");
+  fs.writeFileSync(path.join(featDir, "PLAN_REVIEW.md"), "Verdict: APPROVED_PLAN\n");
+
+  const bin = path.join(cwd, "bin");
+  const codex = path.join(bin, "codex");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+out=''
+for ((i=1;i<=$#;i++)); do
+  if [[ "\${!i}" == "-o" ]]; then
+    j=$((i+1)); out="\${!j}"
+  fi
+done
+[[ -n "$out" ]] && printf 'Verdict: APPROVED\n' > "$out"
+exit 0
+`
+  );
+
+  writeFile(path.join(cwd, ".bt.env"), "BT_LOOP_REQUIRE_GATES=1\n");
+
+  const res = runBt(["loop", "feat-loop-no-gates", "--max-iterations", "1"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+
+  assert.equal(res.code, 1, res.stdout + res.stderr);
+  assert.match(res.stderr, /no gates ran/i);
+});
+
 test("loop runs preflight gates before first implement iteration (stub npm + codex call-order log)", () => {
     const cwd = mkTmp();
 

@@ -70,10 +70,22 @@ bt_cmd_loop() {
 
   bt_info "starting loop for: $feature (max iterations: $max_iter)"
 
+  local -a gate_args=()
+  if [[ "${BT_LOOP_REQUIRE_GATES:-0}" == "1" ]]; then
+    gate_args=(--require-any)
+  fi
+
   bt_info "running preflight gates..."
-  if ! bt_run_gates; then
-    bt_err "preflight gates failed; aborting before implement/review"
-    return 1
+  if (( ${#gate_args[@]} > 0 )); then
+    if ! bt_run_gates "${gate_args[@]}"; then
+      bt_err "preflight gates failed (or none configured); aborting before implement/review"
+      return 1
+    fi
+  else
+    if ! bt_run_gates; then
+      bt_err "preflight gates failed (or none configured); aborting before implement/review"
+      return 1
+    fi
   fi
   bt_info "preflight gates: PASS"
 
@@ -165,11 +177,20 @@ PY
     # bt_cmd_implement/fix return non-zero if gates fail, but we capture the status.
     # We call bt_run_gates here just to be sure of the final state post-review.
     local gates_ok=1
-    if ! bt_run_gates; then
-      gates_ok=0
-      bt_info "gates: FAIL"
+    if (( ${#gate_args[@]} > 0 )); then
+      if ! bt_run_gates "${gate_args[@]}"; then
+        gates_ok=0
+        bt_info "gates: FAIL"
+      else
+        bt_info "gates: PASS"
+      fi
     else
-      bt_info "gates: PASS"
+      if ! bt_run_gates; then
+        gates_ok=0
+        bt_info "gates: FAIL"
+      else
+        bt_info "gates: PASS"
+      fi
     fi
 
     local fix_status="SKIP"
