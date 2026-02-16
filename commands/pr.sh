@@ -254,10 +254,7 @@ bt_cmd_pr() {
   # 4. Commit changes if requested
   if [[ "$commit" == "1" ]]; then
     bt_info "committing changes..."
-    # Add SPEC.md and any tests/implementations related to this feature
-    # We use explicit paths to avoid staging unrelated items
-    local paths_to_add=()
-        local unstaged
+    local unstaged
     unstaged="$(git status --porcelain -- tests lib commands scripts 2>/dev/null || true)"
     if [[ -n "$unstaged" ]]; then
       bt_err "Found unstaged files that might be required for this feature:"

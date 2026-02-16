@@ -307,6 +307,44 @@ exit 0
     assert.match(combined, /Loop successful/);
 });
 
+test("loop accepts Verdict: APPROVE as successful convergence", () => {
+  const cwd = mkTmp();
+  const spec = runBt(["spec", "feat-loop-approve"], { cwd });
+  assert.equal(spec.code, 0, spec.stderr);
+
+  const bin = path.join(cwd, "bin");
+  const codex = path.join(bin, "codex");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+out=""
+args=("$@")
+for ((i=0; i<\${#args[@]}; i++)); do
+  if [[ "\${args[i]}" == "-o" ]]; then
+    out="\${args[i+1]}"
+  fi
+done
+if [[ -n "$out" ]]; then
+  printf 'Verdict: APPROVE\\n' > "$out"
+fi
+exit 0
+`
+  );
+
+  const res = runBt(["loop", "feat-loop-approve", "--max-iterations", "1"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stdout + res.stderr);
+  assert.match(res.stdout + res.stderr, /Loop successful/i);
+
+  const progressPath = path.join(cwd, "specs", "feat-loop-approve", "loop-progress.json");
+  const progress = JSON.parse(fs.readFileSync(progressPath, "utf8"));
+  assert.equal(progress.result, "success");
+  assert.equal(progress.iterations[0].verdict, "APPROVE");
+});
+
 test("loop persists per-iteration history and deterministic progress artifact", () => {
   const cwd = mkTmp();
   const spec = runBt(["spec", "feat-loop-history"], { cwd });

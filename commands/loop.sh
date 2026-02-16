@@ -108,7 +108,7 @@ EOF
     fi
 
     local verdict
-    verdict="$(grep "Verdict:" "$review_file" | head -n 1 | awk '{print $2}' || true)"
+    verdict="$(awk '/^Verdict:/{print toupper($2); exit}' "$review_file" | tr -d '\r' || true)"
     bt_info "verdict: $verdict"
 
     # 4. Check Gates
@@ -145,9 +145,9 @@ with open(p, 'w') as f:
     json.dump(data, f, indent=2)
 PY
 
-    if [[ "$verdict" == "APPROVED" && "$gates_ok" == "1" ]]; then
+    if [[ ( "$verdict" == "APPROVE" || "$verdict" == "APPROVED" ) && "$gates_ok" == "1" ]]; then
       python3 -c "import json; p='$progress_file'; d=json.load(open(p)); d['result']='success'; json.dump(d, open(p, 'w'), indent=2)"
-      bt_info "Loop successful! Verdict APPROVED and Gates PASS."
+      bt_info "Loop successful! Verdict $verdict and Gates PASS."
       return 0
     fi
 
