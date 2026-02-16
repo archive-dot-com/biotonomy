@@ -437,6 +437,27 @@ exit 0
   assert.ok(fs.existsSync(out), `PLAN_REVIEW.md missing: ${res.stdout} ${res.stderr}`);
 });
 
+test("plan-review fails hard when codex is unavailable and does not write approved plan review", () => {
+  const cwd = mkTmp();
+
+  const spec = runBt(["spec", "feat-plan-missing-codex"], { cwd });
+  assert.equal(spec.code, 0, spec.stderr);
+
+  const out = path.join(cwd, "specs", "feat-plan-missing-codex", "PLAN_REVIEW.md");
+  const res = runBt(["plan-review", "feat-plan-missing-codex"], {
+    cwd,
+    env: { BT_CODEX_BIN: "codex-missing-bin-for-test" },
+  });
+
+  assert.notEqual(res.code, 0, res.stdout + res.stderr);
+  assert.match(res.stderr, /codex/i);
+
+  if (fs.existsSync(out)) {
+    const content = fs.readFileSync(out, "utf8");
+    assert.doesNotMatch(content, /Verdict:\s*(APPROVE_PLAN|APPROVED_PLAN)/i);
+  }
+});
+
 test("implement hard-fails without approved PLAN_REVIEW verdict", () => {
     const cwd = mkTmp();
 
