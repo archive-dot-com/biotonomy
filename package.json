@@ -1,6 +1,6 @@
 {
   "name": "biotonomy",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Codex-native autonomous development loop CLI",
   "license": "MIT",
   "repository": {
