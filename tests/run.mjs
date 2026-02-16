@@ -497,6 +497,52 @@ exit 0
   );
 });
 
+test("loop fails loud when implement fails and does not run review", () => {
+  const cwd = mkTmp();
+  const spec = runBt(["spec", "feat-loop-impl-fail"], { cwd });
+  assert.equal(spec.code, 0, spec.stderr);
+
+  const bin = path.join(cwd, "bin");
+  const codex = path.join(bin, "codex");
+  const events = path.join(cwd, "loop-impl-fail.events");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+logf="\${BT_CODEX_LOG_FILE:-}"
+kind="$(basename "$logf" .log | sed 's/^codex-//')"
+printf '%s\\n' "$kind" >> ${JSON.stringify(events)}
+
+if [[ "$kind" == "implement" ]]; then
+  exit 9
+fi
+
+out=""
+args=("$@")
+for ((i=0; i<\${#args[@]}; i++)); do
+  if [[ "\${args[i]}" == "-o" ]]; then
+    out="\${args[i+1]}"
+  fi
+done
+if [[ -n "$out" ]]; then
+  printf 'Verdict: APPROVED\\n' > "$out"
+fi
+exit 0
+`
+  );
+
+  const res = runBt(["loop", "feat-loop-impl-fail", "--max-iterations", "2"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+
+  assert.equal(res.code, 1, res.stdout + res.stderr);
+  assert.match(res.stderr, /implement failed on iter 1/i);
+
+  const calls = fs.readFileSync(events, "utf8").trim().split("\n").filter(Boolean);
+  assert.deepEqual(calls, ["implement"], `unexpected calls after implement failure: ${calls.join(" -> ")}`);
+});
+
 test("loop exits non-zero on max iterations and persists failure progress", () => {
   const cwd = mkTmp();
   const spec = runBt(["spec", "feat-loop-max-fail"], { cwd });

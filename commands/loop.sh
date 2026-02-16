@@ -84,19 +84,43 @@ bt_cmd_loop() {
 }
 EOF
 
+  # Ensure subcommands return non-zero instead of exiting the entire loop process.
+  export BT_DIE_MODE="return"
+
   while [[ "$iter" -lt "$max_iter" ]]; do
     iter=$((iter + 1))
     bt_info "--- Iteration $iter / $max_iter ---"
 
     # 1. Run Implement on every iteration
     bt_info "running implement..."
-    if ! bt_cmd_implement "$feature"; then
-      bt_warn "implement or gates failed on iter $iter"
+    if bt_cmd_implement "$feature"; then
+      :
+    else
+      bt_err "implement failed on iter $iter; aborting loop"
+      python3 - <<PY
+import json
+p = "$progress_file"
+with open(p, 'r') as f:
+    d = json.load(f)
+d['completedIterations'] = $iter
+d['result'] = 'implement-failed'
+d.setdefault('iterations', []).append({
+    "iteration": $iter,
+    "verdict": "",
+    "gates": "FAIL",
+    "historyFile": ""
+})
+with open(p, 'w') as f:
+    json.dump(d, f, indent=2)
+PY
+      return 1
     fi
 
     # 2. Run Review
     bt_info "running review..."
-    if ! bt_cmd_review "$feature"; then
+    if bt_cmd_review "$feature"; then
+       :
+    else
        bt_err "review process failed"
        return 1
     fi
@@ -153,8 +177,11 @@ PY
 
     if [[ "$verdict" == "NEEDS_CHANGES" ]]; then
       bt_info "running fix..."
-      if ! bt_cmd_fix "$feature"; then
-        bt_warn "fix or gates failed after iter $iter review"
+      if bt_cmd_fix "$feature"; then
+        :
+      else
+        bt_err "fix failed after iter $iter review; aborting loop"
+        return 1
       fi
     fi
 

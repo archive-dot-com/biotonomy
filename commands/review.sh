@@ -32,10 +32,13 @@ EOF
   codex_logf="$artifacts_dir/codex-review.log"
   : >"$codex_logf"
   local codex_ec=0
-  if ! BT_FEATURE="$feature" BT_CODEX_LOG_FILE="$codex_logf" bt_codex_exec_read_only "$BT_ROOT/prompts/review.md" "$out"; then
+  if BT_FEATURE="$feature" BT_CODEX_LOG_FILE="$codex_logf" bt_codex_exec_read_only "$BT_ROOT/prompts/review.md" "$out"; then
+    codex_ec=0
+  else
     codex_ec=$?
     bt_warn "codex exited non-zero (review): $codex_ec"
     bt_die "codex failed (review), stopping."
+    return 1
   fi
 
   if [[ ! -f "$out" ]]; then

@@ -43,6 +43,9 @@ bt_debug() {
 
 bt_die() {
   bt_err "$*"
+  if [[ "${BT_DIE_MODE:-exit}" == "return" ]]; then
+    return 1
+  fi
   exit 1
 }
 
