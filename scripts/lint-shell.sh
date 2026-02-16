@@ -33,4 +33,9 @@ else
   mapfile -t files < <(printf '%s\n' "${files[@]}" | sort)
 fi
 
+if [[ ${#files[@]} -eq 0 ]]; then
+  echo "lint: no shell files found; skipping" >&2
+  exit 0
+fi
+
 shellcheck -x "${files[@]}"
