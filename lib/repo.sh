@@ -50,7 +50,7 @@ bt_repo_from_git_origin() {
 }
 
 bt_repo_resolve() {
-  local root="${1:-$PWD}"
+  local root="${1:-${BT_PROJECT_ROOT:-$PWD}}"
 
   local slug=""
   slug="$(bt_repo_from_git_origin "$root" 2>/dev/null || true)"
