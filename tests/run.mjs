@@ -697,33 +697,77 @@ test("gates behavior: writes global or feature gates.json with detailed JSON", (
 if (process.exitCode) process.exit(process.exitCode);
 
 test("pr: fails when required files are unstaged", () => {
-    const cwd = mkTmp();
-    runBt(["bootstrap"], { cwd });
-    runBt(["spec", "feat-unstaged"], { cwd });
-    
-    // Create an implementation file but don't add it
-    const libDir = path.join(cwd, "lib");
-    fs.mkdirSync(libDir, { recursive: true });
-    fs.writeFileSync(path.join(libDir, "index.mjs"), "export const x = 1;");
-    
-    const res = runBt(["pr", "feat-unstaged", "--dry-run"], { cwd });
-    
-    assert.equal(res.code, 1, "pr should exit 1 on unstaged files");
-    assert.ok(res.stderr.includes("Abort: ship requires all feature files to be staged"), "missing abort message");
-    assert.ok(res.stderr.includes("lib/index.mjs"), "should list the unstaged file");
+  const cwd = mkTmp();
+  runBt(["bootstrap"], { cwd });
+  runBt(["spec", "feat-unstaged"], { cwd });
+
+  const git = spawnSync("bash", ["-lc", "git init -q"], { cwd, encoding: "utf8" });
+  assert.equal(git.status, 0, git.stderr);
+
+  const npmLog = path.join(cwd, "npm.args");
+  const bin = path.join(cwd, "bin");
+  fs.mkdirSync(bin, { recursive: true });
+  writeExe(
+    path.join(bin, "npm"),
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$@" >> ${JSON.stringify(npmLog)}
+exit 99
+`
+  );
+
+  // Create an implementation file but don't add it.
+  const libDir = path.join(cwd, "lib");
+  fs.mkdirSync(libDir, { recursive: true });
+  fs.writeFileSync(path.join(libDir, "index.mjs"), "export const x = 1;");
+
+  const res = runBt(["pr", "feat-unstaged", "--dry-run"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+
+  assert.equal(res.code, 1, "pr should exit 1 on unstaged files");
+  assert.ok(res.stderr.includes("Abort: ship requires all feature files to be staged"), "missing abort message");
+  assert.ok(res.stderr.includes("lib/index.mjs"), "should list the unstaged file");
+  assert.ok(!fs.existsSync(npmLog), "npm should not run before unstaged-file validation");
 });
 
 test("P2: Artifacts section is included in PR body", () => {
   const cwd = mkTmp();
   runBt(["bootstrap"], { cwd });
   runBt(["spec", "feat-artifacts"], { cwd });
-  
+
+  const bin = path.join(cwd, "bin");
+  fs.mkdirSync(bin, { recursive: true });
+  writeExe(
+    path.join(bin, "git"),
+    `#!/usr/bin/env bash
+set -euo pipefail
+case "$1" in
+  show-ref) exit 1 ;;
+  symbolic-ref) printf '%s\\n' "refs/remotes/origin/main"; exit 0 ;;
+  *) exit 0 ;;
+esac
+`
+  );
+  writeExe(
+    path.join(bin, "npm"),
+    `#!/usr/bin/env bash
+set -euo pipefail
+exit 77
+`
+  );
+
   // Fake a review and an artifact
   writeFile(path.join(cwd, "specs", "feat-artifacts", "REVIEW.md"), "Verdict: APPROVED");
   writeFile(path.join(cwd, "specs", "feat-artifacts", ".artifacts", "summary.txt"), "Done.");
 
-  const res = runBt(["pr", "feat-artifacts", "--dry-run"], { cwd });
-  
+  const res = runBt(["pr", "feat-artifacts", "--dry-run", "--no-commit"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+
+  assert.equal(res.code, 0, res.stderr);
   assert.ok(res.stdout.includes("### `specs/feat-artifacts/SPEC.md`"), "SPEC missing from artifacts");
   assert.ok(res.stdout.includes("### `specs/feat-artifacts/REVIEW.md`"), "REVIEW missing from artifacts");
   assert.ok(res.stdout.includes("### `specs/feat-artifacts/.artifacts/summary.txt`"), "Artifact missing");

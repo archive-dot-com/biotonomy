@@ -169,13 +169,7 @@ bt_cmd_pr() {
 
   bt_info "shipping feature: $feature"
 
-  # 1. Run Tests & Lint
-  bt_info "running tests..."
-  npm test
-  bt_info "running lint..."
-  npm run lint
-
-  # 2. Determine branch and metadata from SPEC.md
+  # 1. Determine branch and metadata from SPEC.md
   local specs_dir="${BT_SPECS_DIR:-specs}"
   local spec_file="$specs_dir/$feature/SPEC.md"
   local branch="feat/$feature"
@@ -194,7 +188,61 @@ bt_cmd_pr() {
     [[ -n "${i:-}" ]] && issue="$i"
   fi
 
-  # 3. Create branch if needed
+  # 2. Fail-loud preflight for unstaged expected files (before tests/commit flow).
+  if [[ "$commit" == "1" ]]; then
+    local unstaged=""
+    if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      unstaged="$(git ls-files --others --modified --exclude-standard -- tests lib commands scripts 2>/dev/null || true)"
+    else
+      # Outside a git repo, treat present implementation files as unstaged by definition.
+      unstaged="$(find tests lib commands scripts -type f 2>/dev/null | LC_ALL=C sort || true)"
+    fi
+    if [[ -n "$unstaged" ]]; then
+      bt_err "Found unstaged files that might be required for this feature:"
+      printf '%s\n' "$unstaged" >&2
+      bt_die "Abort: ship requires all feature files to be staged. Use git add and try again."
+    fi
+  fi
+
+  if [[ "$run_mode" == "dry-run" ]]; then
+    if [[ -z "$base" ]]; then
+      if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        local ref
+        ref="$(git symbolic-ref -q "refs/remotes/$remote/HEAD" 2>/dev/null || true)"
+        if [[ -n "$ref" ]]; then
+          base="${ref##*/}"
+        else
+          base="main"
+        fi
+      else
+        base="main"
+      fi
+    fi
+
+    local title="feat: $feature"
+    local body="Feature: $feature"
+    [[ -n "$repo" && -n "$issue" ]] && body+=$'\n'"Issue: https://github.com/$repo/issues/$issue"
+    [[ -f "$spec_file" ]] && body+=$'\n'"Spec: $spec_file"
+
+    bt_info "[dry-run] git push -u $remote $branch"
+    bt_info "[dry-run] gh pr create --head $branch --base $base --title $title --body $body"
+    local artifacts_preview
+    artifacts_preview="$(mktemp "${TMPDIR:-/tmp}/bt-pr-artifacts-preview.XXXXXX")"
+    bt_pr_write_artifacts_comment "$feature" "$specs_dir" "$artifacts_preview"
+    bt_info "[dry-run] Artifacts comment would contain:"
+    cat "$artifacts_preview"
+    rm -f "$artifacts_preview"
+    bt_info "ship complete for $feature"
+    return 0
+  fi
+
+  # 3. Run tests & lint (run mode only)
+  bt_info "running tests..."
+  npm test
+  bt_info "running lint..."
+  npm run lint
+
+  # 4. Create branch if needed
   if git show-ref --verify --quiet "refs/heads/$branch"; then
     bt_info "branch $branch already exists, checking it out..."
     git checkout "$branch"
@@ -221,7 +269,7 @@ bt_cmd_pr() {
     fi
 
     local unstaged
-    unstaged="$(git status --porcelain | grep -v ' ' | grep '^??' || true)"
+    unstaged="$(git status --porcelain -- tests lib commands scripts 2>/dev/null || true)"
     if [[ -n "$unstaged" ]]; then
       bt_err "Found unstaged files that might be required for this feature:"
       printf '%s\n' "$unstaged" >&2
