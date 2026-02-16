@@ -12,9 +12,10 @@
   },
   "homepage": "https://github.com/archive-dot-com/biotonomy#readme",
   "bin": {
-    "bt": "./bt.sh"
+    "bt": "bt"
   },
   "files": [
+    "bt",
     "bt.sh",
     "commands/",
     "lib/",
