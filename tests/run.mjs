@@ -383,6 +383,16 @@ exit 0
   assert.equal(progress.iterations[0].verdict, "APPROVE");
 });
 
+test("loop validates --max-iterations as a positive integer", () => {
+  const cwd = mkTmp();
+  const spec = runBt(["spec", "feat-loop-invalid-max"], { cwd });
+  assert.equal(spec.code, 0, spec.stderr);
+
+  const res = runBt(["loop", "feat-loop-invalid-max", "--max-iterations", "nope"], { cwd });
+  assert.equal(res.code, 2, res.stdout + res.stderr);
+  assert.match(res.stderr, /--max-iterations.*positive integer/i);
+});
+
 test("loop persists per-iteration history and deterministic progress artifact", () => {
   const cwd = mkTmp();
   const spec = runBt(["spec", "feat-loop-history"], { cwd });

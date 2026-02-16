@@ -27,7 +27,14 @@ bt_cmd_loop() {
   while [[ $# -gt 0 ]]; do
     case "${1:-}" in
       -h|--help) bt_loop_usage; return 0 ;;
-      --max-iterations) max_iter="${2:-}"; shift 2 ;;
+      --max-iterations)
+        if [[ $# -lt 2 || -z "${2:-}" || "${2:-}" == -* ]]; then
+          bt_err "--max-iterations requires a value"
+          return 2
+        fi
+        max_iter="$2"
+        shift 2
+        ;;
       -*)
         bt_err "unknown flag: $1"
         return 2
@@ -41,6 +48,11 @@ bt_cmd_loop() {
 
   if [[ -z "$feature" ]]; then
     bt_err "feature name is required"
+    return 2
+  fi
+
+  if ! [[ "$max_iter" =~ ^[1-9][0-9]*$ ]]; then
+    bt_err "--max-iterations must be a positive integer"
     return 2
   fi
 
