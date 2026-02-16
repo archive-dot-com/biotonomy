@@ -1,6 +1,23 @@
 #!/usr/bin/env bash
 # biotonomy pr command
 
+bt_pr_usage() {
+  cat <<EOF
+Usage: bt pr <feature-name> [options]
+
+Ship a feature by running tests, committing changes, pushing, and creating a PR.
+
+Options:
+  --run         Actually execute push and gh pr create (default: dry-run)
+  --dry-run     Print push and gh commands without executing
+  --draft       Create the PR as a draft
+  --base <ref>  Base branch for the PR (default: remote's HEAD or main)
+  --remote <n>  Remote to push to (default: origin)
+  --no-commit   Skip committing changes (expects they are already committed)
+  -h, --help    Show this help
+EOF
+}
+
 bt_cmd_pr() {
   local feature=""
   local run_mode="dry-run"
@@ -11,6 +28,7 @@ bt_cmd_pr() {
 
   while [[ $# -gt 0 ]]; do
     case "${1:-}" in
+      -h|--help) bt_pr_usage; return 0 ;;
       --run) run_mode="run"; shift ;;
       --dry-run) run_mode="dry-run"; shift ;;
       --draft) draft=1; shift ;;

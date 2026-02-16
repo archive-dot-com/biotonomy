@@ -41,7 +41,7 @@ Usage:
   bt <command> [args]
 
 Commands:
-  bootstrap  spec  research  implement  review  fix  compound  design  status  gates  reset
+  bootstrap  spec  research  implement  review  fix  compound  design  status  gates  reset  pr  ship
 
 Global options:
   -h, --help     Show help
@@ -66,7 +66,7 @@ bt_dispatch() {
   bt_env_load || true
 
   case "$cmd" in
-    bootstrap|spec|research|implement|review|fix|compound|design|status|gates|reset) ;;
+    bootstrap|spec|research|implement|review|fix|compound|design|status|gates|reset|pr|ship) ;;
     *)
       bt_err "unknown command: $cmd"
       bt_usage >&2
@@ -75,6 +75,10 @@ bt_dispatch() {
   esac
 
   local cmd_file="$BT_ROOT/commands/$cmd.sh"
+  if [[ "$cmd" == "ship" ]]; then
+    cmd_file="$BT_ROOT/commands/pr.sh"
+  fi
+
   if [[ ! -f "$cmd_file" ]]; then
     bt_die "missing command implementation: $cmd_file"
   fi
@@ -83,6 +87,10 @@ bt_dispatch() {
   source "$cmd_file"
 
   local fn="bt_cmd_$cmd"
+  if [[ "$cmd" == "ship" ]]; then
+    fn="bt_cmd_pr"
+  fi
+
   if ! declare -F "$fn" >/dev/null 2>&1; then
     bt_die "command function not found: $fn (in $cmd_file)"
   fi

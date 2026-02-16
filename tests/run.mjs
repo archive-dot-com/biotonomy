@@ -223,6 +223,8 @@ test("command routing: each command --help exits 0", () => {
     "status",
     "gates",
     "reset",
+    "pr",
+    "ship",
   ];
   for (const c of cmds) {
     const res = runBt([c, "--help"]);
