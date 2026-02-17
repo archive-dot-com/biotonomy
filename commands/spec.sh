@@ -44,14 +44,68 @@ bt__stories_from_issue_json() {
     cat <<'NODE'
 const fs = require("fs");
 const j = JSON.parse(fs.readFileSync(0, "utf8") || "{}");
+const researchFile = String(process.env.BT_STORIES_RESEARCH_FILE || "");
 
 function clean(s) {
   return String(s || "").replace(/\s+/g, " ").trim();
 }
 
+function parseResearchRefs(raw) {
+  const refs = [];
+  const seen = new Set();
+  const text = String(raw || "");
+  function addRef(candidate) {
+    let ref = clean(candidate);
+    ref = ref.replace(/^[\x60"]+|[\x60"]+$/g, "");
+    ref = ref.replace(/[\x29,.;:]+$/g, "");
+    if (!ref) return;
+    if (/^https?:\/\//i.test(ref)) return;
+    if (!/[\/.]/.test(ref)) return;
+    if (seen.has(ref)) return;
+    seen.add(ref);
+    refs.push(ref);
+  }
+
+  const inline = text.match(/\x60[^\x60\n]+\x60/g) || [];
+  for (const token of inline) {
+    addRef(token.slice(1, -1));
+    if (refs.length >= 3) break;
+  }
+  if (refs.length < 3) {
+    const lines = text.split(/\r?\n/);
+    let inKeyFiles = false;
+    for (const rawLine of lines) {
+      const line = rawLine || "";
+      if (/^\s*#{1,6}\s*key files to modify\b/i.test(line)) {
+        inKeyFiles = true;
+        continue;
+      }
+      if (/^\s*#{1,6}\s+/.test(line) && inKeyFiles) {
+        inKeyFiles = false;
+      }
+      const m = line.match(/^\s*[-*]\s+(.+?)\s*$/);
+      if (!m) continue;
+      if (!inKeyFiles && !/[\/.]/.test(m[1])) continue;
+      const candidate = m[1].split(/\s+(?:--|->|:)\s+/)[0];
+      addRef(candidate);
+      if (refs.length >= 3) break;
+    }
+  }
+  return refs;
+}
+
 const title = clean(j.title);
 const body = String(j.body || "").replace(/\r/g, "");
 const lines = body.split("\n");
+let researchRefs = [];
+if (researchFile) {
+  try {
+    const researchRaw = fs.readFileSync(researchFile, "utf8");
+    researchRefs = parseResearchRefs(researchRaw);
+  } catch {
+    researchRefs = [];
+  }
+}
 
 let inAcceptance = false;
 const acceptanceBullets = [];
@@ -82,14 +136,23 @@ for (const rawLine of lines) {
 
 const selectedBullets = acceptanceBullets.length > 0 ? acceptanceBullets : allBullets;
 const storyTitles = [];
-if (title) {
+const maxStories = 5;
+const reservedForResearch = researchRefs.length > 0 ? 1 : 0;
+const maxBaseStories = Math.max(0, maxStories - reservedForResearch);
+if (title && storyTitles.length < maxBaseStories) {
   storyTitles.push(title);
 }
 for (const bullet of selectedBullets) {
-  if (storyTitles.length >= 5) {
+  if (storyTitles.length >= maxBaseStories) {
     break;
   }
   storyTitles.push(bullet);
+}
+for (const ref of researchRefs) {
+  if (storyTitles.length >= maxStories) {
+    break;
+  }
+  storyTitles.push("Apply researched pattern from " + ref);
 }
 
 if (storyTitles.length === 0) {
@@ -118,17 +181,19 @@ NODE
 
 bt_cmd_spec() {
   local force=0
+  local research=0
   local arg=""
   while [[ $# -gt 0 ]]; do
     case "${1:-}" in
       -h|--help)
         cat <<'EOF'
 Usage:
-  bt spec [--force] <issue#>
-  bt spec [--force] <feature>
+  bt spec [--force] [--research] <issue#>
+  bt spec [--force] [--research] <feature>
 
 Options:
-  --force   Overwrite existing SPEC.md if it already exists.
+  --force      Overwrite existing SPEC.md if it already exists.
+  --research   Run bt research for the feature before generating stories.
 
 For an <issue#>, requires `gh` and creates `specs/issue-<n>/SPEC.md` using the issue title/body.
 For a <feature>, creates `specs/<feature>/SPEC.md` with a minimal, parseable story list.
@@ -137,6 +202,10 @@ EOF
         ;;
       --force)
         force=1
+        shift
+        ;;
+      --research)
+        research=1
         shift
         ;;
       --*)
@@ -188,6 +257,26 @@ EOF
     fi
   fi
 
+  if (( research == 1 )); then
+    if ! bt_codex_available; then
+      bt_warn "research skipped: codex unavailable; continuing spec generation without RESEARCH.md"
+    else
+      # shellcheck source=/dev/null
+      source "$BT_ROOT/commands/research.sh"
+      local prev_die_mode
+      prev_die_mode="${BT_DIE_MODE:-}"
+      export BT_DIE_MODE="return"
+      if ! bt_cmd_research "$feature"; then
+        bt_warn "research step failed for $feature; continuing spec generation"
+      fi
+      if [[ -n "$prev_die_mode" ]]; then
+        export BT_DIE_MODE="$prev_die_mode"
+      else
+        unset BT_DIE_MODE || true
+      fi
+    fi
+  fi
+
   if [[ -n "$issue" ]]; then
     bt__require_cmd gh
 
@@ -220,9 +309,13 @@ EOF
     [[ -n "$title" ]] || title="(untitled)"
     [[ -n "$url" ]] || url="https://github.com/$repo/issues/$issue"
 
-    local summary stories
+    local summary stories research_file
+    research_file=""
+    if (( research == 1 )) && [[ -f "$dir/RESEARCH.md" ]]; then
+      research_file="$dir/RESEARCH.md"
+    fi
     summary="$(bt__summarize_body "$body")"
-    stories="$(printf '%s' "$json" | bt__stories_from_issue_json)"
+    stories="$(BT_STORIES_RESEARCH_FILE="$research_file" bt__stories_from_issue_json <<<"$json")"
 
     cat >"$spec" <<EOF
 ---
