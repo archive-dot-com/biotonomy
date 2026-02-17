@@ -76,6 +76,33 @@ bt_get_gate_config() {
 
 # Runs gates and returns a JSON string fragment with results.
 # Writes logs to stderr. Returns 0 if all gates passed, 1 otherwise.
+bt__gate_script_exists() {
+  # Check if an npm/pnpm/yarn script actually exists in package.json.
+  # Returns 0 if the script exists or if we can't determine (non-npm project).
+  local cmd="$1"
+  local script_name=""
+
+  # Extract script name from common patterns
+  case "$cmd" in
+    "npm run "*)  script_name="${cmd#npm run }" ;;
+    "npm test")   script_name="test" ;;
+    "pnpm "*)     script_name="${cmd#pnpm }" ;;
+    "yarn "*)     script_name="${cmd#yarn }" ;;
+    *)            return 0 ;;  # Not an npm-style command, assume exists
+  esac
+  script_name="${script_name%% *}"  # Take first word only
+
+  local pkg="$BT_PROJECT_ROOT/package.json"
+  [[ -f "$pkg" ]] || return 0  # No package.json, can't check
+
+  # Check if script exists in package.json
+  if command -v node >/dev/null 2>&1; then
+    node -e "const p=require('$pkg'); process.exit(p.scripts && p.scripts['$script_name'] ? 0 : 1)" 2>/dev/null
+    return $?
+  fi
+  return 0  # Can't verify, assume exists
+}
+
 bt_run_gates() {
   local require_any=0
   if [[ "${1:-}" == "--require-any" ]]; then
@@ -93,14 +120,35 @@ bt_run_gates() {
 
   while IFS= read -r line; do
     [[ -n "$line" ]] || continue
-    any=1
     k="${line%%=*}"
     v="${line#*=}"
 
+    # Skip gates explicitly set to "skip" or "" (disabled)
+    if [[ "$v" == "skip" || -z "$v" ]]; then
+      bt_warn "gate disabled: $k"
+      local entry k_json v_json
+      k_json="$(bt__json_escape "$k")"
+      v_json="$(bt__json_escape "$v")"
+      printf -v entry '"%s": {"cmd": "%s", "status": -1, "skipped": true}' "$k_json" "$v_json"
+      if [[ -z "$results_json" ]]; then results_json="$entry"; else results_json="$results_json, $entry"; fi
+      continue
+    fi
+
+    # Skip gates whose scripts don't exist
+    if ! bt__gate_script_exists "$v"; then
+      bt_warn "gate skipped (script missing): $k ($v)"
+      local entry k_json v_json
+      k_json="$(bt__json_escape "$k")"
+      v_json="$(bt__json_escape "$v")"
+      printf -v entry '"%s": {"cmd": "%s", "status": -1, "skipped": true}' "$k_json" "$v_json"
+      if [[ -z "$results_json" ]]; then results_json="$entry"; else results_json="$results_json, $entry"; fi
+      continue
+    fi
+
+    any=1
+
     bt_info "gate: $k ($v)"
     local status=0
-    # Use bash -lc for interactivity if needed, but we typically want it non-interactive.
-    # The original used bash -lc "$v". We'll stick to that but capture status.
     if ! (cd "$BT_PROJECT_ROOT" && bash -lc "$v"); then
       bt_err "gate failed: $k"
       status=1
