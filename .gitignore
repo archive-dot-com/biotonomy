@@ -4,3 +4,9 @@ yarn-debug.log*
 yarn-error.log*
 .DS_Store
 
+# Biotonomy runtime artifacts (created when running bt inside this repo)
+.bt/
+.bt.env
+specs/issue-*/
+specs/feat-*/
+
