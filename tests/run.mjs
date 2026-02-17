@@ -778,9 +778,9 @@ exit 0
     env: { PATH: `${bin}:${process.env.PATH}` },
   });
   assert.equal(res.code, 1, res.stdout + res.stderr);
-  assert.match(res.stderr, /PLAN_REVIEW\.md/i);
-  assert.match(res.stderr, /bt plan-review feat-plan-gate-loop/i);
-  assert.ok(!fs.existsSync(events), "loop should fail before npm/codex are invoked");
+  assert.match(res.stderr, /PLAN_REVIEW/i);
+  // Loop now auto-runs plan-review when missing; it should still fail
+  // because the stubbed codex doesn't produce an approved PLAN_REVIEW.md
 });
 
 test("loop exits non-zero on max iterations and persists failure progress", () => {
