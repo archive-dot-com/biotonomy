@@ -63,11 +63,25 @@ bt_cmd_loop() {
 
   local feat_dir
   feat_dir="$(bt_feature_dir "$feature")"
+
+  # Auto-run plan-review if PLAN_REVIEW.md is missing or unapproved
   local plan_review="$feat_dir/PLAN_REVIEW.md"
   if [[ ! -f "$plan_review" ]] || ! grep -qiE "Verdict:.*(APPROVE_PLAN|APPROVED_PLAN)" "$plan_review"; then
-    bt_err "missing or unapproved $plan_review"
-    bt_err "run: bt plan-review $feature"
-    bt_die "loop hard-fails without approved PLAN_REVIEW verdict before implement/review"
+    bt_info "PLAN_REVIEW missing or unapproved; auto-running plan-review..."
+    # shellcheck source=/dev/null
+    source "$BT_ROOT/commands/plan-review.sh"
+    if ! bt_cmd_plan_review "$feature"; then
+      bt_err "auto plan-review failed for $feature"
+      bt_err "manually run: bt plan-review $feature"
+      bt_die "loop hard-fails without approved PLAN_REVIEW verdict before implement/review"
+    fi
+    # Re-check after auto-run
+    if [[ ! -f "$plan_review" ]] || ! grep -qiE "Verdict:.*(APPROVE_PLAN|APPROVED_PLAN)" "$plan_review"; then
+      bt_err "plan-review ran but did not produce an approved verdict"
+      bt_err "check $plan_review and re-run: bt plan-review $feature"
+      bt_die "loop hard-fails without approved PLAN_REVIEW verdict before implement/review"
+    fi
+    bt_info "plan-review auto-approved; continuing loop"
   fi
 
   bt_info "starting loop for: $feature (max iterations: $max_iter)"
