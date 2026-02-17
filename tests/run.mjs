@@ -901,6 +901,50 @@ fi
   assert.ok(lines.some((line) => line.startsWith("codex:")), "expected codex invocation");
 });
 
+test("loop auto-runs spec with research when BT_SPEC_RESEARCH=1", () => {
+  const cwd = mkTmp();
+
+  const bin = path.join(cwd, "bin");
+  const codex = path.join(bin, "codex");
+  const codexLog = path.join(cwd, "loop-research.args");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$@" >> ${JSON.stringify(codexLog)}
+out=""
+args=("$@")
+for ((i=0; i<\${#args[@]}; i++)); do
+  if [[ "\${args[i]}" == "-o" ]]; then
+    out="\${args[i+1]}"
+  fi
+done
+if [[ -n "$out" ]]; then
+  mkdir -p "$(dirname "$out")"
+  if [[ "$out" == *"RESEARCH.md" ]]; then
+    printf '%s\\n' "# Research: feat-loop-research-env" "- \`commands/spec.sh\`" > "$out"
+  elif [[ "$out" == *"PLAN_REVIEW.md" ]]; then
+    printf '%s\\n' "Verdict: APPROVED_PLAN" > "$out"
+  elif [[ "$out" == *"REVIEW.md" ]]; then
+    printf '%s\\n' "Verdict: APPROVED" > "$out"
+  fi
+fi
+exit 0
+`
+  );
+
+  const res = runBt(["loop", "feat-loop-research-env", "--max-iterations", "1"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}`, BT_SPEC_RESEARCH: "1" },
+  });
+  assert.equal(res.code, 0, res.stdout + res.stderr);
+
+  const featureDir = path.join(cwd, "specs", "feat-loop-research-env");
+  assert.ok(fs.existsSync(path.join(featureDir, "SPEC.md")), "SPEC.md missing");
+  assert.ok(fs.existsSync(path.join(featureDir, "RESEARCH.md")), "RESEARCH.md missing");
+  assert.match(fs.readFileSync(codexLog, "utf8"), /RESEARCH\.md/);
+});
+
 test("BT_TARGET_DIR: loop writes review/progress/history artifacts under target", () => {
   const caller = mkTmp();
   const target = mkTmp();
@@ -1054,6 +1098,285 @@ exit 2
   assert.match(spec, /README troubleshooting explains gh auth failures/);
   assert.doesNotMatch(spec, /Confirm repo resolution and env fallback/);
   assert.doesNotMatch(spec, /Fetch issue details via gh/);
+});
+
+test("spec --research invokes research and includes research-derived story context", () => {
+  const cwd = mkTmp();
+  writeFile(path.join(cwd, ".bt.env"), "BT_REPO=acme-co/biotonomy\n");
+
+  const bin = path.join(cwd, "bin");
+  const gh = path.join(bin, "gh");
+  const codex = path.join(bin, "codex");
+  const codexLog = path.join(cwd, "codex.args");
+
+  writeExe(
+    gh,
+    `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" == "issue" && "$2" == "view" ]]; then
+  cat <<'JSON'
+{"title":"Research-first stories","url":"https://github.com/acme-co/biotonomy/issues/39","body":"Improve story quality.\\n\\n## Acceptance Criteria\\n- [ ] Stories include codebase-aware details"}
+JSON
+  exit 0
+fi
+exit 2
+`
+  );
+
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$@" >> ${JSON.stringify(codexLog)}
+out=""
+args=("$@")
+for ((i=0; i<\${#args[@]}; i++)); do
+  if [[ "\${args[i]}" == "-o" ]]; then
+    out="\${args[i+1]}"
+  fi
+done
+if [[ -n "$out" && "$out" == *"RESEARCH.md" ]]; then
+  cat > "$out" <<'EOF'
+# Research: issue-39
+
+## Key Files to Modify
+- \`commands/spec.sh\` -- add --research flow
+- \`commands/research.sh\` -- invoke before story generation
+EOF
+fi
+exit 0
+`
+  );
+
+  const res = runBt(["spec", "--research", "39"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stderr);
+
+  const featureDir = path.join(cwd, "specs", "issue-39");
+  const researchPath = path.join(featureDir, "RESEARCH.md");
+  const specPath = path.join(featureDir, "SPEC.md");
+  assert.ok(fs.existsSync(researchPath), "RESEARCH.md missing");
+  assert.ok(fs.existsSync(specPath), "SPEC.md missing");
+  assert.match(fs.readFileSync(specPath, "utf8"), /commands\/spec\.sh/);
+  assert.match(fs.readFileSync(codexLog, "utf8"), /RESEARCH\.md/);
+});
+
+test("spec without --research does not run research or create RESEARCH.md", () => {
+  const cwd = mkTmp();
+  writeFile(path.join(cwd, ".bt.env"), "BT_REPO=acme-co/biotonomy\n");
+
+  const bin = path.join(cwd, "bin");
+  const gh = path.join(bin, "gh");
+  const codex = path.join(bin, "codex");
+  const codexLog = path.join(cwd, "codex.args");
+
+  writeExe(
+    gh,
+    `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" == "issue" && "$2" == "view" ]]; then
+  cat <<'JSON'
+{"title":"No-research mode","url":"https://github.com/acme-co/biotonomy/issues/45","body":"Spec should not call research unless requested."}
+JSON
+  exit 0
+fi
+exit 2
+`
+  );
+
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$@" >> ${JSON.stringify(codexLog)}
+exit 0
+`
+  );
+
+  const res = runBt(["spec", "45"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stderr);
+
+  const featureDir = path.join(cwd, "specs", "issue-45");
+  assert.ok(fs.existsSync(path.join(featureDir, "SPEC.md")), "SPEC.md missing");
+  assert.ok(!fs.existsSync(path.join(featureDir, "RESEARCH.md")), "RESEARCH.md should not be created");
+  assert.ok(!fs.existsSync(codexLog), "codex should not be invoked without --research");
+});
+
+test("spec --research gracefully continues when codex is unavailable", () => {
+  const cwd = mkTmp();
+  writeFile(path.join(cwd, ".bt.env"), "BT_REPO=acme-co/biotonomy\n");
+
+  const bin = path.join(cwd, "bin");
+  const gh = path.join(bin, "gh");
+  writeExe(
+    gh,
+    `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" == "issue" && "$2" == "view" ]]; then
+  cat <<'JSON'
+{"title":"Graceful fallback","url":"https://github.com/acme-co/biotonomy/issues/27","body":"Fallback should still produce SPEC."}
+JSON
+  exit 0
+fi
+exit 2
+`
+  );
+
+  const res = runBt(["spec", "--research", "27"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}`, BT_CODEX_BIN: "codex-missing-for-test" },
+  });
+  assert.equal(res.code, 0, res.stdout + res.stderr);
+  assert.match(res.stderr, /research skipped/i);
+  assert.ok(fs.existsSync(path.join(cwd, "specs", "issue-27", "SPEC.md")), "SPEC.md missing");
+});
+
+test("spec --force without --research ignores existing RESEARCH.md", () => {
+  const cwd = mkTmp();
+  writeFile(path.join(cwd, ".bt.env"), "BT_REPO=outside-org/docs-cli\n");
+
+  const bin = path.join(cwd, "bin");
+  const gh = path.join(bin, "gh");
+  writeExe(
+    gh,
+    `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" == "issue" && "$2" == "view" ]]; then
+  cat <<'JSON'
+{"title":"Improve docs generation","url":"https://github.com/outside-org/docs-cli/issues/27","body":"## Acceptance Criteria\\n- [ ] Keep stories implementation-ready"}
+JSON
+  exit 0
+fi
+exit 2
+`
+  );
+
+  const first = runBt(["spec", "27"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(first.code, 0, first.stderr);
+
+  const featureDir = path.join(cwd, "specs", "issue-27");
+  const specPath = path.join(featureDir, "SPEC.md");
+  const withoutResearch = fs.readFileSync(specPath, "utf8");
+
+  writeFile(
+    path.join(featureDir, "RESEARCH.md"),
+    [
+      "# Research: issue-27",
+      "",
+      "## Key Files to Modify",
+      "- `commands/loop.sh` orchestrates command flow",
+      "",
+    ].join("\n")
+  );
+
+  const second = runBt(["spec", "--force", "27"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(second.code, 0, second.stderr);
+
+  const withResearch = fs.readFileSync(specPath, "utf8");
+  assert.equal(withResearch, withoutResearch);
+  assert.doesNotMatch(withResearch, /commands\/loop\.sh/);
+});
+
+test("spec --research keeps at least one research-derived story when acceptance bullets are dense", () => {
+  const cwd = mkTmp();
+  writeFile(path.join(cwd, ".bt.env"), "BT_REPO=acme-co/biotonomy\n");
+
+  const bin = path.join(cwd, "bin");
+  const gh = path.join(bin, "gh");
+  const codex = path.join(bin, "codex");
+  writeExe(
+    gh,
+    `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" == "issue" && "$2" == "view" ]]; then
+  cat <<'JSON'
+{"title":"Research slot regression","url":"https://github.com/acme-co/biotonomy/issues/39","body":"## Acceptance Criteria\\n- [ ] A1\\n- [ ] A2\\n- [ ] A3\\n- [ ] A4"}
+JSON
+  exit 0
+fi
+exit 2
+`
+  );
+
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+out=""
+args=("$@")
+for ((i=0; i<\${#args[@]}; i++)); do
+  if [[ "\${args[i]}" == "-o" ]]; then
+    out="\${args[i+1]}"
+  fi
+done
+if [[ -n "$out" && "$out" == *"RESEARCH.md" ]]; then
+  cat > "$out" <<'EOF'
+# Research: issue-39
+
+## Key Files to Modify
+- commands/spec.sh -- reserve room for research
+EOF
+fi
+exit 0
+`
+  );
+
+  const res = runBt(["spec", "--research", "39"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stderr);
+
+  const specPath = path.join(cwd, "specs", "issue-39", "SPEC.md");
+  const spec = fs.readFileSync(specPath, "utf8");
+  assert.match(spec, /Apply researched pattern from commands\/spec\.sh/);
+});
+
+test("spec --research <feature> runs research before writing SPEC", () => {
+  const cwd = mkTmp();
+  const feature = "feat-r-feature";
+  const featureDir = path.join(cwd, "specs", feature);
+
+  const bin = path.join(cwd, "bin");
+  const codex = path.join(bin, "codex");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+out=""
+args=("$@")
+for ((i=0; i<\${#args[@]}; i++)); do
+  if [[ "\${args[i]}" == "-o" ]]; then
+    out="\${args[i+1]}"
+  fi
+done
+if [[ -n "$out" && "$out" == *"RESEARCH.md" ]]; then
+  cat > "$out" <<'EOF'
+# Research: feat-r-feature
+EOF
+fi
+exit 0
+`
+  );
+
+  const res = runBt(["spec", "--research", feature], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stderr);
+  assert.ok(fs.existsSync(path.join(featureDir, "RESEARCH.md")), "RESEARCH.md missing");
+  assert.ok(fs.existsSync(path.join(featureDir, "SPEC.md")), "SPEC.md missing");
 });
 
 test("spec: existing feature SPEC is not overwritten without --force", () => {

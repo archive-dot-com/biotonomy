@@ -63,6 +63,37 @@ bt_cmd_loop() {
 
   local feat_dir
   feat_dir="$(bt_feature_dir "$feature")"
+  local spec_file="$feat_dir/SPEC.md"
+
+  if [[ ! -f "$spec_file" ]]; then
+    bt_info "SPEC missing; auto-running spec for $feature"
+    # shellcheck source=/dev/null
+    source "$BT_ROOT/commands/spec.sh"
+
+    local prev_die_mode
+    prev_die_mode="${BT_DIE_MODE:-}"
+    export BT_DIE_MODE="return"
+    local -a spec_args
+    spec_args=("$feature")
+    if [[ "${BT_SPEC_RESEARCH:-0}" == "1" ]]; then
+      spec_args=(--research "$feature")
+    fi
+    if ! bt_cmd_spec "${spec_args[@]}"; then
+      if [[ -n "$prev_die_mode" ]]; then
+        export BT_DIE_MODE="$prev_die_mode"
+      else
+        unset BT_DIE_MODE || true
+      fi
+      bt_err "auto spec failed for $feature"
+      bt_die "loop failed before plan-review due to missing SPEC.md"
+    fi
+    if [[ -n "$prev_die_mode" ]]; then
+      export BT_DIE_MODE="$prev_die_mode"
+    else
+      unset BT_DIE_MODE || true
+    fi
+    feat_dir="$(bt_feature_dir "$feature")"
+  fi
 
   # Auto-run plan-review if PLAN_REVIEW.md is missing or unapproved
   local plan_review="$feat_dir/PLAN_REVIEW.md"
