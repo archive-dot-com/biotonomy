@@ -10,10 +10,19 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
 const bt = path.join(repoRoot, "bt.sh");
 
+function cleanEnv() {
+  // Strip BT_GATE_* and BT_SPEC_* vars from parent env to prevent leakage into tests
+  const clean = { ...process.env };
+  for (const k of Object.keys(clean)) {
+    if (k.startsWith("BT_GATE_") || k.startsWith("BT_SPEC_")) delete clean[k];
+  }
+  return clean;
+}
+
 function runBt(args, { cwd, env } = {}) {
   const res = spawnSync("bash", [bt, ...args], {
     cwd,
-    env: { ...process.env, BT_GATE_TEST: "true", ...(env || {}) },
+    env: { ...cleanEnv(), BT_GATE_TEST: "true", ...(env || {}) },
     encoding: "utf8",
   });
   return {
