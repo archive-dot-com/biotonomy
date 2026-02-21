@@ -103,6 +103,15 @@ bt__gate_script_exists() {
   return 0  # Can't verify, assume exists
 }
 
+bt__gate_run_cmd() {
+  local cmd="$1"
+  (
+    cd "$BT_PROJECT_ROOT" || exit 1
+    # Keep user env, but avoid leaking bt root/target plumbing into child test processes.
+    env -u BT_PROJECT_ROOT -u BT_ENV_FILE -u BT_TARGET_DIR bash -lc "$cmd"
+  )
+}
+
 bt_run_gates() {
   local require_any=0
   if [[ "${1:-}" == "--require-any" ]]; then
@@ -149,7 +158,7 @@ bt_run_gates() {
 
     bt_info "gate: $k ($v)"
     local status=0
-    if ! (cd "$BT_PROJECT_ROOT" && bash -lc "$v"); then
+    if ! bt__gate_run_cmd "$v"; then
       bt_err "gate failed: $k"
       status=1
       overall_ok=1

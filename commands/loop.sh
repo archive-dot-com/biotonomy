@@ -20,6 +20,65 @@ Options:
 EOF
 }
 
+bt__loop_strict_review_delta_check() {
+  local prev_review="$1"
+  local curr_review="$2"
+
+  [[ "${BT_LOOP_STRICT_REVIEW_DELTA:-0}" == "1" ]] || return 0
+  [[ -f "$curr_review" ]] || return 0
+  [[ -f "$prev_review" ]] || return 0
+
+  local violations
+  if violations="$(python3 - <<PY
+import re
+import sys
+
+prev_path = "$prev_review"
+curr_path = "$curr_review"
+
+def extract_findings(path):
+    out = []
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        for raw in f:
+            line = raw.rstrip("\\r\\n")
+            m = re.match(r"^\\s*\\d+\\.\\s+(.*\\S)\\s*$", line)
+            if not m:
+                continue
+            finding = " ".join(m.group(1).split())
+            if finding:
+                out.append(finding)
+    return out
+
+prev_findings = set(extract_findings(prev_path))
+violations = []
+for finding in extract_findings(curr_path):
+    if finding in prev_findings:
+        continue
+    upper_finding = finding.upper()
+    if "[REGRESSION]" in upper_finding or "[SPEC_GAP]" in upper_finding:
+        continue
+    violations.append(finding)
+
+for finding in violations:
+    print(finding)
+
+sys.exit(1 if violations else 0)
+PY
+)"; then
+    return 0
+  fi
+
+  bt_err "strict review delta violation: new findings were introduced without [REGRESSION] or [SPEC_GAP]"
+  bt_err "previous review: $prev_review"
+  bt_err "current review: $curr_review"
+  while IFS= read -r finding; do
+    [[ -n "$finding" ]] || continue
+    bt_err "untagged new finding: $finding"
+  done <<<"$violations"
+  bt_err "action: tag each new finding with [REGRESSION] or [SPEC_GAP], or tie it directly to fixed rubric/SPEC."
+  return 1
+}
+
 bt_cmd_loop() {
   local max_iter=5
   local feature=""
@@ -253,6 +312,23 @@ PY
     if [[ ! -f "$review_file" ]]; then
        bt_err "REVIEW.md missing after review command"
        return 1
+    fi
+
+    local prev_review_file=""
+    if [[ "$iter" -gt 1 ]]; then
+      local prev_iter_padded
+      prev_iter_padded="$(printf "%03d" "$((iter - 1))")"
+      local candidate
+      for candidate in "$history_dir"/*"-loop-iter-$prev_iter_padded.md"; do
+        [[ -f "$candidate" ]] || continue
+        prev_review_file="$candidate"
+        break
+      done
+    fi
+    if [[ -n "$prev_review_file" ]]; then
+      if ! bt__loop_strict_review_delta_check "$prev_review_file" "$review_file"; then
+        return 1
+      fi
     fi
 
     local verdict
