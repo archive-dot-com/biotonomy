@@ -9,4 +9,5 @@ yarn-error.log*
 .bt.env
 specs/issue-*/
 specs/feat-*/
-
+logs/*.log
+logs/codex/*.md

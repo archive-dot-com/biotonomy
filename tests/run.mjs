@@ -901,6 +901,80 @@ fi
   assert.ok(lines.some((line) => line.startsWith("codex:")), "expected codex invocation");
 });
 
+test("loop fails loud when git working tree has dirty tracked changes", () => {
+  const cwd = mkTmp();
+  const gitInit = spawnSync("bash", ["-lc", "git init -q"], { cwd, encoding: "utf8" });
+  assert.equal(gitInit.status, 0, gitInit.stderr);
+
+  const baseline = path.join(cwd, "tracked.txt");
+  writeFile(baseline, "v1\n");
+  const gitAdd = spawnSync("bash", ["-lc", "git add tracked.txt && git commit -qm 'init'"], {
+    cwd,
+    encoding: "utf8",
+  });
+  assert.equal(gitAdd.status, 0, gitAdd.stderr);
+
+  const spec = runBt(["spec", "feat-loop-dirty"], { cwd });
+  assert.equal(spec.code, 0, spec.stderr);
+  const featDir = path.join(cwd, "specs", "feat-loop-dirty");
+  writeFile(path.join(featDir, "PLAN_REVIEW.md"), "Verdict: APPROVED_PLAN\n");
+
+  // Dirty tracked change should block loop startup.
+  writeFile(baseline, "v2\n");
+
+  const res = runBt(["loop", "feat-loop-dirty", "--max-iterations", "1"], { cwd });
+  assert.equal(res.code, 1, res.stdout + res.stderr);
+  assert.match(res.stderr, /dirty tracked changes/i);
+  assert.match(res.stderr, /BT_LOOP_ALLOW_DIRTY=1/);
+});
+
+test("loop allows dirty tracked changes when BT_LOOP_ALLOW_DIRTY=1", () => {
+  const cwd = mkTmp();
+  const gitInit = spawnSync("bash", ["-lc", "git init -q"], { cwd, encoding: "utf8" });
+  assert.equal(gitInit.status, 0, gitInit.stderr);
+
+  const baseline = path.join(cwd, "tracked.txt");
+  writeFile(baseline, "v1\n");
+  const gitAdd = spawnSync("bash", ["-lc", "git add tracked.txt && git commit -qm 'init'"], {
+    cwd,
+    encoding: "utf8",
+  });
+  assert.equal(gitAdd.status, 0, gitAdd.stderr);
+
+  const spec = runBt(["spec", "feat-loop-dirty-override"], { cwd });
+  assert.equal(spec.code, 0, spec.stderr);
+  const featDir = path.join(cwd, "specs", "feat-loop-dirty-override");
+  writeFile(path.join(featDir, "PLAN_REVIEW.md"), "Verdict: APPROVED_PLAN\n");
+
+  writeFile(baseline, "v2\n");
+
+  const bin = path.join(cwd, "bin");
+  const codex = path.join(bin, "codex");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+out=""
+args=("$@")
+for ((i=0; i<\${#args[@]}; i++)); do
+  if [[ "\${args[i]}" == "-o" ]]; then
+    out="\${args[i+1]}"
+  fi
+done
+if [[ -n "$out" ]]; then
+  printf 'Verdict: APPROVED\\n' > "$out"
+fi
+`
+  );
+
+  const res = runBt(["loop", "feat-loop-dirty-override", "--max-iterations", "1"], {
+    cwd,
+    env: { BT_LOOP_ALLOW_DIRTY: "1", PATH: `${bin}:${process.env.PATH}` },
+  });
+  assert.equal(res.code, 0, res.stdout + res.stderr);
+  assert.match(res.stderr, /preflight gates: PASS/i);
+});
+
 test("loop auto-runs spec with research when BT_SPEC_RESEARCH=1", () => {
   const cwd = mkTmp();
 

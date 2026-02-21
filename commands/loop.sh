@@ -20,6 +20,40 @@ Options:
 EOF
 }
 
+bt_loop_require_clean_worktree() {
+  local feature="$1"
+  local root="${BT_PROJECT_ROOT:-$PWD}"
+
+  if [[ "${BT_LOOP_ALLOW_DIRTY:-0}" == "1" ]]; then
+    bt_info "BT_LOOP_ALLOW_DIRTY=1 set; skipping clean-worktree preflight"
+    return 0
+  fi
+
+  if ! command -v git >/dev/null 2>&1; then
+    return 0
+  fi
+  if ! git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if git -C "$root" diff --quiet --ignore-submodules -- \
+    && git -C "$root" diff --cached --quiet --ignore-submodules --; then
+    return 0
+  fi
+
+  local dirty_tracked=""
+  dirty_tracked="$(git -C "$root" status --short --untracked-files=no 2>/dev/null || true)"
+
+  bt_err "detected dirty tracked changes in git working tree; refusing to start loop"
+  if [[ -n "$dirty_tracked" ]]; then
+    bt_err "tracked changes:"
+    printf '%s\n' "$dirty_tracked" >&2
+  fi
+  bt_err "remediation: commit or stash tracked changes, then re-run: bt loop $feature"
+  bt_err "override (explicit): BT_LOOP_ALLOW_DIRTY=1 bt loop $feature"
+  return 1
+}
+
 bt_cmd_loop() {
   local max_iter=5
   local feature=""
@@ -60,6 +94,7 @@ bt_cmd_loop() {
 
   bt_env_load || true
   bt_ensure_dirs
+  bt_loop_require_clean_worktree "$feature" || return 1
 
   local feat_dir
   feat_dir="$(bt_feature_dir "$feature")"
