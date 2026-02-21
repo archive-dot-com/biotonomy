@@ -901,6 +901,75 @@ fi
   assert.ok(lines.some((line) => line.startsWith("codex:")), "expected codex invocation");
 });
 
+test("loop preflight gate execution does not leak BT_PROJECT_ROOT/BT_ENV_FILE/BT_TARGET_DIR into npm test", () => {
+  const cwd = mkTmp();
+  runBt(["spec", "feat-loop-env-isolation"], { cwd });
+  const featDir = path.join(cwd, "specs", "feat-loop-env-isolation");
+  writeFile(path.join(featDir, "PLAN_REVIEW.md"), "Verdict: APPROVED_PLAN\n");
+
+  writeFile(
+    path.join(cwd, "package.json"),
+    JSON.stringify(
+      {
+        name: "gate-env-isolation",
+        version: "1.0.0",
+        scripts: { lint: "echo lint", typecheck: "echo typecheck", test: "echo test" },
+      },
+      null,
+      2
+    )
+  );
+  writeFile(path.join(cwd, "package-lock.json"), "{}\n");
+
+  const bin = path.join(cwd, "bin");
+  const npm = path.join(bin, "npm");
+  writeExe(
+    npm,
+    `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "\${1:-}" == "test" ]]; then
+  if [[ -n "\${BT_PROJECT_ROOT:-}" || -n "\${BT_ENV_FILE:-}" || -n "\${BT_TARGET_DIR:-}" ]]; then
+    echo "env leak detected in npm test subprocess" >&2
+    echo "BT_PROJECT_ROOT=\${BT_PROJECT_ROOT:-}" >&2
+    echo "BT_ENV_FILE=\${BT_ENV_FILE:-}" >&2
+    echo "BT_TARGET_DIR=\${BT_TARGET_DIR:-}" >&2
+    exit 1
+  fi
+fi
+exit 0
+`
+  );
+
+  const codex = path.join(bin, "codex");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+out=""
+args=("$@")
+for ((i=0; i<\${#args[@]}; i++)); do
+  if [[ "\${args[i]}" == "-o" ]]; then
+    out="\${args[i+1]}"
+  fi
+done
+if [[ -n "$out" ]]; then
+  printf 'Verdict: APPROVED\\n' > "$out"
+fi
+`
+  );
+
+  const res = runBt(["loop", "feat-loop-env-isolation", "--max-iterations", "1"], {
+    cwd,
+    env: {
+      PATH: `${bin}:${process.env.PATH}`,
+      BT_GATE_LINT: "",
+      BT_GATE_TYPECHECK: "",
+      BT_GATE_TEST: "",
+    },
+  });
+  assert.equal(res.code, 0, res.stdout + res.stderr);
+});
+
 test("loop auto-runs spec with research when BT_SPEC_RESEARCH=1", () => {
   const cwd = mkTmp();
 
@@ -994,6 +1063,28 @@ fi
   const callerFeatureDir = path.join(caller, "specs", "feat-loop-target");
   assert.ok(!fs.existsSync(path.join(callerFeatureDir, "REVIEW.md")), "caller REVIEW.md should not be created");
   assert.ok(!fs.existsSync(path.join(callerFeatureDir, "loop-progress.json")), "caller loop-progress.json should not be created");
+});
+
+test("prompts include fixed rubric anchors and review-delta tagging guidance", () => {
+  const reviewPrompt = fs.readFileSync(path.join(repoRoot, "prompts", "review.md"), "utf8");
+  const planReviewPrompt = fs.readFileSync(path.join(repoRoot, "prompts", "plan-review.md"), "utf8");
+
+  const requiredAnchors = [
+    /Security baseline/,
+    /Concurrency\/idempotency/,
+    /Data retention\/privacy/,
+    /Error contract determinism/,
+    /Required failure\/race test coverage/,
+  ];
+  for (const anchor of requiredAnchors) {
+    assert.match(reviewPrompt, anchor, `review prompt missing anchor ${anchor}`);
+    assert.match(planReviewPrompt, anchor, `plan-review prompt missing anchor ${anchor}`);
+  }
+
+  assert.match(reviewPrompt, /\[REGRESSION\]/);
+  assert.match(reviewPrompt, /\[SPEC_GAP\]/);
+  assert.match(planReviewPrompt, /\[REGRESSION\]/);
+  assert.match(planReviewPrompt, /\[SPEC_GAP\]/);
 });
 
 test("command routing: each command --help exits 0", () => {
@@ -1998,6 +2089,106 @@ fi
   ];
   
   assert.deepEqual(lines, expected, `Incomplete or wrong sequence: ${lines.join(" -> ")}`);
+});
+
+test("loop strict review delta mode fails on untagged new findings", () => {
+  const cwd = mkTmp();
+  const spec = runBt(["spec", "feat-loop-strict-fail"], { cwd });
+  assert.equal(spec.code, 0, spec.stderr);
+  writeFile(path.join(cwd, "specs", "feat-loop-strict-fail", "PLAN_REVIEW.md"), "Verdict: APPROVED_PLAN\n");
+
+  const bin = path.join(cwd, "bin");
+  const codex = path.join(bin, "codex");
+  const reviewCountFile = path.join(cwd, "strict-fail.review-count");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+out=""
+args=("$@")
+for ((i=0; i<\${#args[@]}; i++)); do
+  if [[ "\${args[i]}" == "-o" ]]; then
+    out="\${args[i+1]}"
+  fi
+done
+if [[ -n "$out" ]]; then
+  c=0
+  [[ -f ${JSON.stringify(reviewCountFile)} ]] && c=$(cat ${JSON.stringify(reviewCountFile)})
+  c=$((c+1))
+  echo "$c" > ${JSON.stringify(reviewCountFile)}
+  if [[ "$c" -eq 1 ]]; then
+    cat > "$out" <<'MD'
+Verdict: NEEDS_CHANGES
+1. Existing baseline finding in src/a.ts
+MD
+  else
+    cat > "$out" <<'MD'
+Verdict: NEEDS_CHANGES
+1. Existing baseline finding in src/a.ts
+2. New untagged finding added late in src/b.ts
+MD
+  fi
+fi
+exit 0
+`
+  );
+
+  const res = runBt(["loop", "feat-loop-strict-fail", "--max-iterations", "2"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}`, BT_LOOP_STRICT_REVIEW_DELTA: "1" },
+  });
+  assert.equal(res.code, 1, res.stdout + res.stderr);
+  assert.match(res.stderr, /strict review delta violation/i);
+  assert.match(res.stderr, /New untagged finding added late/i);
+});
+
+test("loop strict review delta mode allows tagged new findings", () => {
+  const cwd = mkTmp();
+  const spec = runBt(["spec", "feat-loop-strict-pass"], { cwd });
+  assert.equal(spec.code, 0, spec.stderr);
+  writeFile(path.join(cwd, "specs", "feat-loop-strict-pass", "PLAN_REVIEW.md"), "Verdict: APPROVED_PLAN\n");
+
+  const bin = path.join(cwd, "bin");
+  const codex = path.join(bin, "codex");
+  const reviewCountFile = path.join(cwd, "strict-pass.review-count");
+  writeExe(
+    codex,
+    `#!/usr/bin/env bash
+set -euo pipefail
+out=""
+args=("$@")
+for ((i=0; i<\${#args[@]}; i++)); do
+  if [[ "\${args[i]}" == "-o" ]]; then
+    out="\${args[i+1]}"
+  fi
+done
+if [[ -n "$out" ]]; then
+  c=0
+  [[ -f ${JSON.stringify(reviewCountFile)} ]] && c=$(cat ${JSON.stringify(reviewCountFile)})
+  c=$((c+1))
+  echo "$c" > ${JSON.stringify(reviewCountFile)}
+  if [[ "$c" -eq 1 ]]; then
+    cat > "$out" <<'MD'
+Verdict: NEEDS_CHANGES
+1. Existing baseline finding in src/a.ts
+MD
+  else
+    cat > "$out" <<'MD'
+Verdict: APPROVED
+1. Existing baseline finding in src/a.ts
+2. [REGRESSION] New bug introduced by latest patch in src/b.ts
+MD
+  fi
+fi
+exit 0
+`
+  );
+
+  const res = runBt(["loop", "feat-loop-strict-pass", "--max-iterations", "2"], {
+    cwd,
+    env: { PATH: `${bin}:${process.env.PATH}`, BT_LOOP_STRICT_REVIEW_DELTA: "1" },
+  });
+  assert.equal(res.code, 0, res.stdout + res.stderr);
 });
 
 test("issue #10: loop-progress.json persists per-iteration stage results", () => {

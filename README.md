@@ -43,6 +43,9 @@ bt loop "$FEATURE" --max-iterations 3
 
 Loop hard-requires an approved `specs/<feature>/PLAN_REVIEW.md` verdict (`APPROVE_PLAN` or `APPROVED_PLAN`).
 
+Optional strict mode:
+- `BT_LOOP_STRICT_REVIEW_DELTA=1` fails the loop when a new `REVIEW.md` finding appears without `[REGRESSION]` or `[SPEC_GAP]` tagging (or clear fixed-rubric/SPEC tie-in).
+
 ## Artifacts And State
 
 Biotonomy writes feature state under `specs/<feature>/`:
